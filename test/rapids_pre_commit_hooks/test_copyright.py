@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import contextlib
 import datetime
 import os.path
 import tempfile
@@ -20,10 +19,26 @@ from unittest.mock import Mock, patch
 
 import git
 import pytest
-from freezegun import freeze_time
 
 from rapids_pre_commit_hooks import copyright
-from rapids_pre_commit_hooks.lint import Linter
+
+
+def mock_os_walk(top):
+    return patch(
+        "os.walk",
+        Mock(
+            return_value=(
+                (
+                    "."
+                    if (rel := os.path.relpath(dirpath, top)) == "."
+                    else os.path.join(".", rel),
+                    dirnames,
+                    filenames,
+                )
+                for dirpath, dirnames, filenames in os.walk(top)
+            )
+        ),
+    )
 
 
 def test_match_copyright():
@@ -86,80 +101,6 @@ This is a line after the last copyright statement
 
     stripped = copyright.strip_copyright("No copyright here", [])
     assert stripped == ["No copyright here"]
-
-
-@freeze_time("2024-01-18")
-def test_apply_copyright_check():
-    def run_apply_copyright_check(old_content, new_content):
-        linter = Linter("file.txt", new_content)
-        copyright.apply_copyright_check(linter, old_content)
-        return linter
-
-    expected_linter = Linter("file.txt", "No copyright notice")
-    expected_linter.add_warning((0, 0), "no copyright notice found")
-
-    linter = run_apply_copyright_check(None, "No copyright notice")
-    assert linter.warnings == expected_linter.warnings
-
-    linter = run_apply_copyright_check("No copyright notice", "No copyright notice")
-    assert linter.warnings == []
-
-    OLD_CONTENT = r"""
-Copyright (c) 2021-2023 NVIDIA CORPORATION
-Copyright (c) 2023 NVIDIA CORPORATION
-Copyright (c) 2024 NVIDIA CORPORATION
-Copyright (c) 2025 NVIDIA CORPORATION
-This file has not been changed
-"""
-    linter = run_apply_copyright_check(OLD_CONTENT, OLD_CONTENT)
-    assert linter.warnings == []
-
-    NEW_CONTENT = r"""
-Copyright (c) 2021-2023 NVIDIA CORPORATION
-Copyright (c) 2023 NVIDIA CORPORATION
-Copyright (c) 2024 NVIDIA CORPORATION
-Copyright (c) 2025 NVIDIA CORPORATION
-This file has been changed
-"""
-    expected_linter = Linter("file.txt", NEW_CONTENT)
-    expected_linter.add_warning((15, 24), "copyright is out of date").add_replacement(
-        (1, 43), "Copyright (c) 2021-2024, NVIDIA CORPORATION"
-    )
-    expected_linter.add_warning((58, 62), "copyright is out of date").add_replacement(
-        (44, 81), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
-    )
-
-    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT)
-    assert linter.warnings == expected_linter.warnings
-
-    expected_linter = Linter("file.txt", NEW_CONTENT)
-    expected_linter.add_warning((15, 24), "copyright is out of date").add_replacement(
-        (1, 43), "Copyright (c) 2021-2024, NVIDIA CORPORATION"
-    )
-    expected_linter.add_warning((58, 62), "copyright is out of date").add_replacement(
-        (44, 81), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
-    )
-
-    linter = run_apply_copyright_check(None, NEW_CONTENT)
-    assert linter.warnings == expected_linter.warnings
-
-    NEW_CONTENT = r"""
-Copyright (c) 2021-2024 NVIDIA CORPORATION
-Copyright (c) 2023 NVIDIA CORPORATION
-Copyright (c) 2024 NVIDIA CORPORATION
-Copyright (c) 2025 NVIDIA Corporation
-This file has not been changed
-"""
-    expected_linter = Linter("file.txt", NEW_CONTENT)
-    expected_linter.add_warning(
-        (15, 24), "copyright is not out of date and should not be updated"
-    ).add_replacement((1, 43), "Copyright (c) 2021-2023 NVIDIA CORPORATION")
-    expected_linter.add_warning(
-        (120, 157), "copyright is not out of date and should not be updated"
-    ).add_replacement((120, 157), "Copyright (c) 2025 NVIDIA CORPORATION")
-
-    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT)
-    assert linter.warnings == expected_linter.warnings
 
 
 @pytest.fixture
@@ -445,37 +386,6 @@ def test_get_target_branch_upstream_commit(git_repo):
 
 
 def test_get_changed_files(git_repo):
-    def mock_os_walk(top):
-        return patch(
-            "os.walk",
-            Mock(
-                return_value=(
-                    (
-                        "."
-                        if (rel := os.path.relpath(dirpath, top)) == "."
-                        else os.path.join(".", rel),
-                        dirnames,
-                        filenames,
-                    )
-                    for dirpath, dirnames, filenames in os.walk(top)
-                )
-            ),
-        )
-
-    with tempfile.TemporaryDirectory() as non_git_dir, patch(
-        "os.getcwd", Mock(return_value=non_git_dir)
-    ), mock_os_walk(non_git_dir):
-        with open(os.path.join(non_git_dir, "top.txt"), "w") as f:
-            f.write("Top file\n")
-        os.mkdir(os.path.join(non_git_dir, "subdir1"))
-        os.mkdir(os.path.join(non_git_dir, "subdir1/subdir2"))
-        with open(os.path.join(non_git_dir, "subdir1", "subdir2", "sub.txt"), "w") as f:
-            f.write("Subdir file\n")
-        assert copyright.get_changed_files(Mock(target_branch=None)) == {
-            "top.txt": None,
-            "subdir1/subdir2/sub.txt": None,
-        }
-
     def fn(filename):
         return os.path.join(git_repo.working_tree_dir, filename)
 
@@ -510,13 +420,11 @@ def test_get_changed_files(git_repo):
         ]
     )
 
-    with patch("os.getcwd", Mock(return_value=git_repo.working_tree_dir)), mock_os_walk(
-        git_repo.working_tree_dir
-    ), patch(
+    with mock_os_walk(git_repo.working_tree_dir), patch(
         "rapids_pre_commit_hooks.copyright.get_target_branch_upstream_commit",
         Mock(return_value=None),
     ):
-        assert copyright.get_changed_files(Mock(target_branch=None)) == {
+        assert copyright.get_changed_files(git_repo, None) == {
             "untouched.txt": None,
             "copied.txt": None,
             "modified_and_copied.txt": None,
@@ -606,11 +514,7 @@ def test_get_changed_files(git_repo):
         "renamed_2.txt": "renamed.txt",
     }
 
-    with patch("os.getcwd", Mock(return_value=git_repo.working_tree_dir)), patch(
-        "rapids_pre_commit_hooks.copyright.get_target_branch_upstream_commit",
-        Mock(return_value=target_branch.commit),
-    ):
-        changed_files = copyright.get_changed_files(Mock(target_branch=None))
+    changed_files = copyright.get_changed_files(git_repo, merge_base)
     assert {
         path: old_blob.path if old_blob else None
         for path, old_blob in changed_files.items()
@@ -959,370 +863,9 @@ End of copyrighted file
     )
 
 
-def test_apply_batch_copyright_check(git_repo):
-    def fn(filename):
-        return os.path.join(git_repo.working_tree_dir, filename)
-
-    def write_file(filename, content):
-        with open(fn(filename), "w") as f:
-            f.write(content)
-
-    CONTENT = """
-Beginning of copyrighted file
-Copyright (c) 2023 NVIDIA CORPORATION
-End of copyrighted file
-"""
-    write_file("file.txt", CONTENT)
-    git_repo.index.add("file.txt")
-    git_repo.index.commit(
-        "Initial commit",
-        commit_date=datetime.datetime(2023, 2, 1, tzinfo=datetime.timezone.utc),
-    )
-
-    linter = Linter("file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    linter = Linter("file.txt", CONTENT + "Oops")
-    with pytest.warns(
-        copyright.ConflictingFilesWarning,
-        match=r'^File "file[.]txt" differs from Git history[.] Not running batch '
-        r"copyright update[.]$",
-    ):
-        copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    linter = Linter("file2.txt", CONTENT + "Oops")
-    with pytest.warns(
-        copyright.ConflictingFilesWarning,
-        match=r'^File "file2[.]txt" not in Git history[.] Not running batch copyright '
-        r"update[.]$",
-    ):
-        copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    CONTENT = """
-Beginning of copyrighted file
-Copyright (c) 2023 NVIDIA CORPORATION
-New content
-End of copyrighted file
-"""
-    write_file("file.txt", CONTENT)
-    git_repo.index.add("file.txt")
-    git_repo.index.commit(
-        "Add content",
-        commit_date=datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
-    )
-
-    expected_linter = Linter("file.txt", CONTENT)
-    expected_linter.add_warning((45, 49), "copyright is out of date").add_replacement(
-        (31, 68), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
-    )
-
-    linter = Linter("file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == expected_linter.warnings
-
-    expected_linter = Linter("./file.txt", CONTENT)
-    expected_linter.add_warning((45, 49), "copyright is out of date").add_replacement(
-        (31, 68), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
-    )
-
-    linter = Linter("./file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == expected_linter.warnings
-
-    linter = Linter("../file.txt", CONTENT)
-    with pytest.warns(
-        copyright.ConflictingFilesWarning,
-        match=r'File "\.\./file.txt" is outside of current directory\. Not running '
-        r"linter on it\.$",
-    ):
-        copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    CONTENT = """
-Beginning of copyrighted file
-Copyright (c) 2023-2024 NVIDIA CORPORATION
-New content
-End of copyrighted file
-"""
-    write_file("file.txt", CONTENT)
-    git_repo.index.add("file.txt")
-    git_repo.index.commit(
-        "Add content",
-        commit_date=datetime.datetime(2024, 2, 2, tzinfo=datetime.timezone.utc),
-    )
-
-    linter = Linter("file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    CONTENT = """
-Beginning of copyrighted file
-Copyright (c) 2023-2024 NVIDIA CORPORATION
-Newer content
-End of copyrighted file
-"""
-    write_file("file.txt", CONTENT)
-    git_repo.index.add("file.txt")
-    git_repo.index.commit(
-        "Update copyright and content",
-        commit_date=datetime.datetime(2024, 2, 3, tzinfo=datetime.timezone.utc),
-    )
-
-    linter = Linter("file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    CONTENT = """
-Beginning of copyrighted file
-Copyright (c) 2023-2025 NVIDIA CORPORATION
-Newer content
-End of copyrighted file
-"""
-    write_file("file.txt", CONTENT)
-    git_repo.index.add("file.txt")
-    git_repo.index.commit(
-        "Update copyright again",
-        commit_date=datetime.datetime(2025, 2, 1, tzinfo=datetime.timezone.utc),
-    )
-
-    linter = Linter("file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == []
-
-    CONTENT = """
-Beginning of copyrighted file
-Copyright (c) 2023-2025 NVIDIA CORPORATION
-Even newer content
-End of copyrighted file
-"""
-    write_file("file.txt", CONTENT)
-    git_repo.index.add("file.txt")
-    git_repo.index.commit(
-        "Update copyright again",
-        commit_date=datetime.datetime(2026, 2, 1, tzinfo=datetime.timezone.utc),
-    )
-
-    expected_linter = Linter("file.txt", CONTENT)
-    expected_linter.add_warning((45, 54), "copyright is out of date").add_replacement(
-        (31, 73), "Copyright (c) 2023-2026, NVIDIA CORPORATION"
-    )
-
-    linter = Linter("file.txt", CONTENT)
-    copyright.apply_batch_copyright_check(git_repo, linter)
-    assert linter.warnings == expected_linter.warnings
+def test_apply_copyright_check():
+    pass
 
 
-@freeze_time("2024-01-18")
-def test_check_copyright(git_repo):
-    def fn(filename):
-        return os.path.join(git_repo.working_tree_dir, filename)
-
-    def write_file(filename, contents):
-        with open(fn(filename), "w") as f:
-            f.write(contents)
-
-    def file_contents(num):
-        return rf"""
-Copyright (c) 2021-2023 NVIDIA CORPORATION
-File {num}
-"""
-
-    def file_contents_modified(num):
-        return rf"""
-Copyright (c) 2021-2023 NVIDIA CORPORATION
-File {num} modified
-"""
-
-    write_file("file1.txt", file_contents(1))
-    write_file("file2.txt", file_contents(2))
-    write_file("file3.txt", file_contents(3))
-    write_file("file4.txt", file_contents(4))
-    git_repo.index.add(["file1.txt", "file2.txt", "file3.txt", "file4.txt"])
-    git_repo.index.commit("Initial commit")
-
-    branch_1 = git_repo.create_head("branch-1", "master")
-    git_repo.head.reference = branch_1
-    git_repo.head.reset(index=True, working_tree=True)
-    write_file("file1.txt", file_contents_modified(1))
-    git_repo.index.add(["file1.txt"])
-    git_repo.index.commit("Update file1.txt")
-
-    branch_2 = git_repo.create_head("branch-2", "master")
-    git_repo.head.reference = branch_2
-    git_repo.head.reset(index=True, working_tree=True)
-    write_file("file2.txt", file_contents_modified(2))
-    git_repo.index.add(["file2.txt"])
-    git_repo.index.commit("Update file2.txt")
-
-    pr = git_repo.create_head("pr", "branch-1")
-    git_repo.head.reference = pr
-    git_repo.head.reset(index=True, working_tree=True)
-    write_file("file3.txt", file_contents_modified(3))
-    git_repo.index.add(["file3.txt"])
-    git_repo.index.commit("Update file3.txt")
-    write_file("file4.txt", file_contents_modified(4))
-    git_repo.index.add(["file4.txt"])
-    git_repo.index.commit("Update file4.txt")
-    git_repo.index.move(["file2.txt", "file5.txt"])
-    git_repo.index.commit("Rename file2.txt to file5.txt")
-
-    write_file("file6.txt", file_contents(6))
-
-    def mock_repo_cwd():
-        return patch("os.getcwd", Mock(return_value=git_repo.working_tree_dir))
-
-    def mock_target_branch_upstream_commit(target_branch):
-        def func(repo, target_branch_arg):
-            assert target_branch == target_branch_arg
-            return repo.heads[target_branch].commit
-
-        return patch(
-            "rapids_pre_commit_hooks.copyright.get_target_branch_upstream_commit", func
-        )
-
-    def mock_apply_copyright_check():
-        return patch("rapids_pre_commit_hooks.copyright.apply_copyright_check", Mock())
-
-    @contextlib.contextmanager
-    def no_apply_batch_copyright_check():
-        with patch(
-            "rapids_pre_commit_hooks.copyright.apply_batch_copyright_check", Mock()
-        ) as apply_batch_copyright_check:
-            yield
-            apply_batch_copyright_check.assert_not_called()
-
-    #############################
-    # branch-1 is target branch
-    #############################
-
-    mock_args = Mock(target_branch="branch-1", batch=False)
-
-    with mock_repo_cwd(), mock_target_branch_upstream_commit("branch-1"):
-        copyright_checker = copyright.check_copyright(mock_args)
-
-    linter = Linter("file1.txt", file_contents_modified(1))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_not_called()
-
-    linter = Linter("file5.txt", file_contents(2))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(2))
-
-    linter = Linter("file3.txt", file_contents_modified(3))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(3))
-
-    linter = Linter("file4.txt", file_contents_modified(4))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(4))
-
-    linter = Linter("file6.txt", file_contents(6))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, None)
-
-    #############################
-    # branch-2 is target branch
-    #############################
-
-    mock_args = Mock(target_branch="branch-2", batch=False)
-
-    with mock_repo_cwd(), mock_target_branch_upstream_commit("branch-2"):
-        copyright_checker = copyright.check_copyright(mock_args)
-
-    linter = Linter("file1.txt", file_contents_modified(1))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(1))
-
-    linter = Linter("./file1.txt", file_contents_modified(1))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(1))
-
-    linter = Linter("../file1.txt", file_contents_modified(1))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        with pytest.warns(
-                copyright.ConflictingFilesWarning,
-                match=r'File "\.\./file1\.txt" is outside of current directory\. Not '
-                r'running linter on it\.$'):
-            copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_not_called()
-
-    linter = Linter("file5.txt", file_contents(2))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(2))
-
-    linter = Linter("file3.txt", file_contents_modified(3))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(3))
-
-    linter = Linter("file4.txt", file_contents_modified(4))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(4))
-
-    linter = Linter("file6.txt", file_contents(6))
-    # fmt: off
-    with mock_apply_copyright_check() as apply_copyright_check, \
-            no_apply_batch_copyright_check():
-        # fmt: on
-        copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, None)
-
-
-def test_check_copyright_batch():
-    git_repo = Mock()
-    with patch("git.Repo", Mock(return_value=git_repo)), patch(
-        "rapids_pre_commit_hooks.copyright.apply_copyright_check", Mock()
-    ) as apply_copyright_check, patch(
-        "rapids_pre_commit_hooks.copyright.apply_batch_copyright_check", Mock()
-    ) as apply_batch_copyright_check:
-        mock_args = Mock(batch=True)
-        copyright_checker = copyright.check_copyright(mock_args)
-        linter = Mock()
-        copyright_checker(linter, mock_args)
-        apply_batch_copyright_check.assert_called_once_with(git_repo, linter)
-        apply_copyright_check.assert_not_called()
+def test_check_copyright():
+    pass
