@@ -90,18 +90,20 @@ This is a line after the last copyright statement
 
 @freeze_time("2024-01-18")
 def test_apply_copyright_check():
-    def run_apply_copyright_check(old_content, new_content):
+    def run_apply_copyright_check(old_content, new_content, last_modified_year):
         linter = Linter("file.txt", new_content)
-        copyright.apply_copyright_check(linter, old_content)
+        copyright.apply_copyright_check(linter, old_content, last_modified_year)
         return linter
 
     expected_linter = Linter("file.txt", "No copyright notice")
     expected_linter.add_warning((0, 0), "no copyright notice found")
 
-    linter = run_apply_copyright_check(None, "No copyright notice")
+    linter = run_apply_copyright_check(None, "No copyright notice", 2023)
     assert linter.warnings == expected_linter.warnings
 
-    linter = run_apply_copyright_check("No copyright notice", "No copyright notice")
+    linter = run_apply_copyright_check(
+        "No copyright notice", "No copyright notice", 2023
+    )
     assert linter.warnings == []
 
     OLD_CONTENT = r"""
@@ -111,7 +113,7 @@ Copyright (c) 2024 NVIDIA CORPORATION
 Copyright (c) 2025 NVIDIA CORPORATION
 This file has not been changed
 """
-    linter = run_apply_copyright_check(OLD_CONTENT, OLD_CONTENT)
+    linter = run_apply_copyright_check(OLD_CONTENT, OLD_CONTENT, 2023)
     assert linter.warnings == []
 
     NEW_CONTENT = r"""
@@ -129,7 +131,7 @@ This file has been changed
         (44, 81), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
     )
 
-    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT)
+    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT, 2023)
     assert linter.warnings == expected_linter.warnings
 
     expected_linter = Linter("file.txt", NEW_CONTENT)
@@ -140,7 +142,7 @@ This file has been changed
         (44, 81), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
     )
 
-    linter = run_apply_copyright_check(None, NEW_CONTENT)
+    linter = run_apply_copyright_check(None, NEW_CONTENT, 2024)
     assert linter.warnings == expected_linter.warnings
 
     NEW_CONTENT = r"""
@@ -158,7 +160,18 @@ This file has not been changed
         (120, 157), "copyright is not out of date and should not be updated"
     ).add_replacement((120, 157), "Copyright (c) 2025 NVIDIA CORPORATION")
 
-    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT)
+    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT, 2023)
+    assert linter.warnings == expected_linter.warnings
+
+    expected_linter = Linter("file.txt", NEW_CONTENT)
+    expected_linter.add_warning((58, 62), "copyright is out of date").add_replacement(
+        (44, 81), "Copyright (c) 2023-2024, NVIDIA CORPORATION"
+    )
+    expected_linter.add_warning(
+        (120, 157), "copyright is not out of date and should not be updated"
+    ).add_replacement((120, 157), "Copyright (c) 2025 NVIDIA CORPORATION")
+
+    linter = run_apply_copyright_check(OLD_CONTENT, NEW_CONTENT, 2024)
     assert linter.warnings == expected_linter.warnings
 
 
@@ -444,6 +457,7 @@ def test_get_target_branch_upstream_commit(git_repo):
             assert copyright.get_target_branch_upstream_commit(git_repo) == main.commit
 
 
+@freeze_time("2024-01-30")
 def test_get_changed_files(git_repo):
     def mock_os_walk(top):
         return patch(
@@ -471,9 +485,9 @@ def test_get_changed_files(git_repo):
         os.mkdir(os.path.join(non_git_dir, "subdir1/subdir2"))
         with open(os.path.join(non_git_dir, "subdir1", "subdir2", "sub.txt"), "w") as f:
             f.write("Subdir file\n")
-        assert copyright.get_changed_files(Mock(target_branch=None)) == {
-            "top.txt": None,
-            "subdir1/subdir2/sub.txt": None,
+        assert copyright.get_changed_files(None, None) == {
+            "top.txt": {"old_blob": None, "last_modified_year": 2024},
+            "subdir1/subdir2/sub.txt": {"old_blob": None, "last_modified_year": 2024},
         }
 
     def fn(filename):
@@ -510,30 +524,30 @@ def test_get_changed_files(git_repo):
         ]
     )
 
-    with patch("os.getcwd", Mock(return_value=git_repo.working_tree_dir)), mock_os_walk(
-        git_repo.working_tree_dir
-    ), patch(
-        "rapids_pre_commit_hooks.copyright.get_target_branch_upstream_commit",
-        Mock(return_value=None),
-    ):
-        assert copyright.get_changed_files(Mock(target_branch=None)) == {
-            "untouched.txt": None,
-            "copied.txt": None,
-            "modified_and_copied.txt": None,
-            "copied_and_modified.txt": None,
-            "deleted.txt": None,
-            "renamed.txt": None,
-            "modified_and_renamed.txt": None,
-            "modified.txt": None,
-            "chmodded.txt": None,
-            "untracked.txt": None,
-        }
+    assert copyright.get_changed_files(git_repo, None) == {
+        "untouched.txt": {"old_blob": None, "last_modified_year": 2024},
+        "copied.txt": {"old_blob": None, "last_modified_year": 2024},
+        "modified_and_copied.txt": {"old_blob": None, "last_modified_year": 2024},
+        "copied_and_modified.txt": {"old_blob": None, "last_modified_year": 2024},
+        "deleted.txt": {"old_blob": None, "last_modified_year": 2024},
+        "renamed.txt": {"old_blob": None, "last_modified_year": 2024},
+        "modified_and_renamed.txt": {"old_blob": None, "last_modified_year": 2024},
+        "modified.txt": {"old_blob": None, "last_modified_year": 2024},
+        "chmodded.txt": {"old_blob": None, "last_modified_year": 2024},
+        "untracked.txt": {"old_blob": None, "last_modified_year": 2024},
+    }
 
-    git_repo.index.commit("Initial commit")
+    git_repo.index.commit(
+        "Initial commit",
+        commit_date=datetime.datetime(2022, 1, 30, tzinfo=datetime.timezone.utc),
+    )
 
     # Ensure that diff is done against merge base, not branch tip
     git_repo.index.remove(["modified.txt"], working_tree=True)
-    git_repo.index.commit("Remove modified.txt")
+    git_repo.index.commit(
+        "Remove modified.txt",
+        commit_date=datetime.datetime(2023, 1, 30, tzinfo=datetime.timezone.utc),
+    )
 
     pr_branch = git_repo.create_head("pr", "HEAD~")
     git_repo.head.reference = pr_branch
@@ -590,47 +604,49 @@ def test_get_changed_files(git_repo):
 
     # Truly need to be checked
     changed = {
-        "added.txt": None,
-        "untracked.txt": None,
-        "modified_and_renamed_2.txt": "modified_and_renamed.txt",
-        "modified.txt": "modified.txt",
-        "copied_and_modified_2.txt": "copied_and_modified.txt",
-        "modified_and_copied.txt": "modified_and_copied.txt",
+        "added.txt": {"old_blob": None, "last_modified_year": 2024},
+        "untracked.txt": {"old_blob": None, "last_modified_year": 2024},
+        "modified_and_renamed_2.txt": {"old_blob": None, "last_modified_year": 2024},
+        "modified.txt": {"old_blob": "modified.txt", "last_modified_year": 2022},
+        "copied_and_modified_2.txt": {"old_blob": None, "last_modified_year": 2024},
+        "modified_and_copied.txt": {
+            "old_blob": "modified_and_copied.txt",
+            "last_modified_year": 2022,
+        },
+        "modified_and_copied_2.txt": {"old_blob": None, "last_modified_year": 2024},
+        "copied_2.txt": {"old_blob": None, "last_modified_year": 2024},
+        "renamed_2.txt": {"old_blob": None, "last_modified_year": 2024},
     }
 
     # Superfluous, but harmless because the content is identical
     superfluous = {
-        "chmodded.txt": "chmodded.txt",
-        "modified_and_copied_2.txt": "modified_and_copied.txt",
-        "copied_2.txt": "copied.txt",
-        "renamed_2.txt": "renamed.txt",
+        "chmodded.txt": {"old_blob": "chmodded.txt", "last_modified_year": 2022},
     }
 
-    with patch("os.getcwd", Mock(return_value=git_repo.working_tree_dir)), patch(
-        "rapids_pre_commit_hooks.copyright.get_target_branch_upstream_commit",
-        Mock(return_value=target_branch.commit),
-    ):
-        changed_files = copyright.get_changed_files(Mock(target_branch=None))
+    changed_files = copyright.get_changed_files(git_repo, merge_base)
     assert {
-        path: old_blob.path if old_blob else None
-        for path, old_blob in changed_files.items()
+        path: {
+            "old_blob": data["old_blob"].path if data["old_blob"] else None,
+            "last_modified_year": data["last_modified_year"],
+        }
+        for path, data in changed_files.items()
     } == changed | superfluous
 
     for new, old in changed.items():
-        if old:
+        if old["old_blob"]:
             with open(fn(new), "rb") as f:
                 new_contents = f.read()
-            old_contents = old_files[old].data_stream.read()
+            old_contents = old_files[old["old_blob"]].data_stream.read()
             assert new_contents != old_contents
-            assert changed_files[new].data_stream.read() == old_contents
+            assert changed_files[new]["old_blob"].data_stream.read() == old_contents
 
     for new, old in superfluous.items():
-        if old:
+        if old["old_blob"]:
             with open(fn(new), "rb") as f:
                 new_contents = f.read()
-            old_contents = old_files[old].data_stream.read()
+            old_contents = old_files[old["old_blob"]].data_stream.read()
             assert new_contents == old_contents
-            assert changed_files[new].data_stream.read() == old_contents
+            assert changed_files[new]["old_blob"].data_stream.read() == old_contents
 
 
 def test_normalize_git_filename():
@@ -1115,7 +1131,7 @@ End of copyrighted file
     assert linter.warnings == expected_linter.warnings
 
 
-@freeze_time("2024-01-18")
+@freeze_time("2030-01-18")
 def test_check_copyright(git_repo):
     def fn(filename):
         return os.path.join(git_repo.working_tree_dir, filename)
@@ -1141,33 +1157,51 @@ File {num} modified
     write_file("file3.txt", file_contents(3))
     write_file("file4.txt", file_contents(4))
     git_repo.index.add(["file1.txt", "file2.txt", "file3.txt", "file4.txt"])
-    git_repo.index.commit("Initial commit")
+    git_repo.index.commit(
+        "Initial commit",
+        commit_date=datetime.datetime(2024, 1, 30, tzinfo=datetime.timezone.utc),
+    )
 
     branch_1 = git_repo.create_head("branch-1", "master")
     git_repo.head.reference = branch_1
     git_repo.head.reset(index=True, working_tree=True)
     write_file("file1.txt", file_contents_modified(1))
     git_repo.index.add(["file1.txt"])
-    git_repo.index.commit("Update file1.txt")
+    git_repo.index.commit(
+        "Update file1.txt",
+        commit_date=datetime.datetime(2025, 1, 30, tzinfo=datetime.timezone.utc),
+    )
 
     branch_2 = git_repo.create_head("branch-2", "master")
     git_repo.head.reference = branch_2
     git_repo.head.reset(index=True, working_tree=True)
     write_file("file2.txt", file_contents_modified(2))
     git_repo.index.add(["file2.txt"])
-    git_repo.index.commit("Update file2.txt")
+    git_repo.index.commit(
+        "Update file2.txt",
+        commit_date=datetime.datetime(2026, 1, 30, tzinfo=datetime.timezone.utc),
+    )
 
     pr = git_repo.create_head("pr", "branch-1")
     git_repo.head.reference = pr
     git_repo.head.reset(index=True, working_tree=True)
     write_file("file3.txt", file_contents_modified(3))
     git_repo.index.add(["file3.txt"])
-    git_repo.index.commit("Update file3.txt")
+    git_repo.index.commit(
+        "Update file3.txt",
+        commit_date=datetime.datetime(2027, 1, 30, tzinfo=datetime.timezone.utc),
+    )
     write_file("file4.txt", file_contents_modified(4))
     git_repo.index.add(["file4.txt"])
-    git_repo.index.commit("Update file4.txt")
+    git_repo.index.commit(
+        "Update file4.txt",
+        commit_date=datetime.datetime(2028, 1, 30, tzinfo=datetime.timezone.utc),
+    )
     git_repo.index.move(["file2.txt", "file5.txt"])
-    git_repo.index.commit("Rename file2.txt to file5.txt")
+    git_repo.index.commit(
+        "Rename file2.txt to file5.txt",
+        commit_date=datetime.datetime(2029, 1, 30, tzinfo=datetime.timezone.utc),
+    )
 
     write_file("file6.txt", file_contents(6))
 
@@ -1217,7 +1251,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(2))
+        apply_copyright_check.assert_called_once_with(linter, None, 2030)
 
     linter = Linter("file3.txt", file_contents_modified(3))
     # fmt: off
@@ -1225,7 +1259,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(3))
+        apply_copyright_check.assert_called_once_with(linter, file_contents(3), 2024)
 
     linter = Linter("file4.txt", file_contents_modified(4))
     # fmt: off
@@ -1233,7 +1267,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(4))
+        apply_copyright_check.assert_called_once_with(linter, file_contents(4), 2024)
 
     linter = Linter("file6.txt", file_contents(6))
     # fmt: off
@@ -1241,7 +1275,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, None)
+        apply_copyright_check.assert_called_once_with(linter, None, 2030)
 
     #############################
     # branch-2 is target branch
@@ -1258,7 +1292,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(1))
+        apply_copyright_check.assert_called_once_with(linter, file_contents(1), 2024)
 
     linter = Linter("./file1.txt", file_contents_modified(1))
     # fmt: off
@@ -1266,7 +1300,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(1))
+        apply_copyright_check.assert_called_once_with(linter, file_contents(1), 2024)
 
     linter = Linter("../file1.txt", file_contents_modified(1))
     # fmt: off
@@ -1286,7 +1320,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(2))
+        apply_copyright_check.assert_called_once_with(linter, None, 2030)
 
     linter = Linter("file3.txt", file_contents_modified(3))
     # fmt: off
@@ -1294,7 +1328,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(3))
+        apply_copyright_check.assert_called_once_with(linter, file_contents(3), 2024)
 
     linter = Linter("file4.txt", file_contents_modified(4))
     # fmt: off
@@ -1302,7 +1336,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, file_contents(4))
+        apply_copyright_check.assert_called_once_with(linter, file_contents(4), 2024)
 
     linter = Linter("file6.txt", file_contents(6))
     # fmt: off
@@ -1310,7 +1344,7 @@ File {num} modified
             no_apply_batch_copyright_check():
         # fmt: on
         copyright_checker(linter, mock_args)
-        apply_copyright_check.assert_called_once_with(linter, None)
+        apply_copyright_check.assert_called_once_with(linter, None, 2030)
 
 
 def test_check_copyright_batch():

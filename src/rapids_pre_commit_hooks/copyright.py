@@ -83,7 +83,11 @@ def apply_copyright_update(linter, match, year):
     )
 
 
-def apply_copyright_check(linter, old_content):
+def get_match_last_year(match):
+    return int(match.group("last_year") or match.group("first_year"))
+
+
+def apply_copyright_check(linter, old_content, year_last_modified):
     if linter.content != old_content:
         current_year = datetime.datetime.now().year
         new_copyright_matches = match_copyright(linter.content)
@@ -97,14 +101,16 @@ def apply_copyright_check(linter, old_content):
             for old_match, new_match in zip(
                 old_copyright_matches, new_copyright_matches, strict=True
             ):
-                if old_match.group() != new_match.group():
+                if get_match_last_year(new_match) < year_last_modified:
+                    apply_copyright_update(linter, new_match, year_last_modified)
+                elif (
+                    old_match.group() != new_match.group()
+                    and get_match_last_year(old_match) >= year_last_modified
+                ):
                     apply_copyright_revert(linter, old_match, new_match)
         elif new_copyright_matches:
             for match in new_copyright_matches:
-                if (
-                    int(match.group("last_year") or match.group("first_year"))
-                    < current_year
-                ):
+                if get_match_last_year(match) < current_year:
                     apply_copyright_update(linter, match, current_year)
         else:
             linter.add_warning((0, 0), "no copyright notice found")
@@ -209,36 +215,47 @@ def get_target_branch_upstream_commit(repo, target_branch_arg=None):
         return None
 
 
-def get_changed_files(target_branch_arg):
-    try:
-        repo = git.Repo()
-    except git.InvalidGitRepositoryError:
+def get_changed_files(repo, commit):
+    current_year = datetime.datetime.now().year
+    if repo is None:
         return {
-            os.path.relpath(os.path.join(dirpath, filename), "."): None
+            os.path.relpath(os.path.join(dirpath, filename), "."): {
+                "old_blob": None,
+                "last_modified_year": current_year,
+            }
             for dirpath, dirnames, filenames in os.walk(".")
             for filename in filenames
         }
 
-    changed_files = {f: None for f in repo.untracked_files}
-    target_branch_upstream_commit = get_target_branch_upstream_commit(
-        repo, target_branch_arg
-    )
-    if target_branch_upstream_commit is None:
-        changed_files.update({blob.path: None for _, blob in repo.index.iter_blobs()})
+    changed_files = {
+        f: {"old_blob": None, "last_modified_year": current_year}
+        for f in repo.untracked_files
+    }
+    if commit is None:
+        changed_files.update(
+            {
+                blob.path: {"old_blob": None, "last_modified_year": current_year}
+                for _, blob in repo.index.iter_blobs()
+            }
+        )
         return changed_files
 
-    diffs = target_branch_upstream_commit.diff(
+    diffs = commit.diff(
         other=None,
-        merge_base=True,
-        find_copies=True,
-        find_copies_harder=True,
-        find_renames=True,
+        no_renames=True,
     )
     for diff in diffs:
         if diff.change_type == "A":
-            changed_files[diff.b_path] = None
+            changed_files[diff.b_path] = {
+                "old_blob": None,
+                "last_modified_year": current_year,
+            }
         elif diff.change_type != "D":
-            changed_files[diff.b_path] = diff.a_blob
+            last_modified = get_file_last_modified(commit, diff.b_path)
+            changed_files[diff.b_path] = {
+                "old_blob": diff.a_blob,
+                "last_modified_year": last_modified.committed_datetime.year,
+            }
 
     return changed_files
 
@@ -324,7 +341,24 @@ def check_copyright(args):
 
         return the_check
 
-    changed_files = get_changed_files(args.target_branch)
+    try:
+        repo = git.Repo()
+    except git.InvalidGitRepositoryError:
+        repo = None
+
+    if repo:
+        upstream_commit = get_target_branch_upstream_commit(repo, args.target_branch)
+        try:
+            head = repo.head.commit
+        except ValueError:
+            head = None
+        if head:
+            merge_base = repo.merge_base(upstream_commit, head)[0]
+        else:
+            merge_base = None
+    else:
+        merge_base = None
+    changed_files = get_changed_files(repo, merge_base)
 
     def the_check(linter, args):
         if not (git_filename := normalize_git_filename(linter.filename)):
@@ -341,11 +375,11 @@ def check_copyright(args):
             return
 
         old_content = (
-            changed_file.data_stream.read().decode()
-            if changed_file is not None
+            changed_file["old_blob"].data_stream.read().decode()
+            if changed_file["old_blob"] is not None
             else None
         )
-        apply_copyright_check(linter, old_content)
+        apply_copyright_check(linter, old_content, changed_file["last_modified_year"])
 
     return the_check
 
