@@ -16,72 +16,72 @@ class Handler:
 
     def handle_dependencies(
         self,
-        root_context: "Any",  # noqa: ARG002
+        root_context: "Any",
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(root_context)
 
     def handle_dependency_set(
         self,
-        dependencies_context: "Any",  # noqa: ARG002
+        dependencies_context: "Any",
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(dependencies_context)
 
     def handle_common(
         self,
-        dependency_set_context: "Any",  # noqa: ARG002
+        dependency_set_context: "Any",
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(dependency_set_context)
 
     def handle_common_item(
         self,
-        common_context: "Any",  # noqa: ARG002
+        common_context: "Any",
         item: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(common_context)
 
     def handle_specific(
         self,
-        dependency_set_context: "Any",  # noqa: ARG002
+        dependency_set_context: "Any",
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(dependency_set_context)
 
     def handle_specific_item(
         self,
-        specific_context: "Any",  # noqa: ARG002
+        specific_context: "Any",
         item: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(specific_context)
 
     def handle_matrices(
         self,
-        specific_item_context: "Any",  # noqa: ARG002
+        specific_item_context: "Any",
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(specific_item_context)
 
     def handle_matrices_item(
         self,
-        matrices_context: "Any",  # noqa: ARG002
+        matrices_context: "Any",
         item: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(matrices_context)
 
     def handle_packages(
         self,
-        common_or_matrices_item_context: "Any",  # noqa: ARG002
+        common_or_matrices_item_context: "Any",
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
-        return contextlib.nullcontext()
+        return contextlib.nullcontext(common_or_matrices_item_context)
 
     def handle_package(
         self,
