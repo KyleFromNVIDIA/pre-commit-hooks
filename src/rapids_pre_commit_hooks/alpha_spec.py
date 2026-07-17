@@ -5,7 +5,7 @@ import argparse
 import os
 import re
 from functools import cache, total_ordering
-from typing import Optional
+from typing import Any, Optional
 
 import yaml
 from packaging.requirements import InvalidRequirement, Requirement
@@ -54,7 +54,7 @@ class AlphaSpecHandler(Handler):
 
     def handle_package(
         self,
-        packages_context,  # noqa: ARG002
+        packages_context: "Any",  # noqa: ARG002
         anchor: "Optional[str]",
         node: "yaml.Node",
     ) -> None:
