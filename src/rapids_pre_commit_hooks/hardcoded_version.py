@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
 import bisect
@@ -271,8 +271,7 @@ def main() -> None:
     m.argparser.add_argument(
         "--version-scheme",
         help="Version scheme to use (default: calver)",
-        type=VersionScheme,
-        default=VersionScheme.CALVER,
+        default=VersionScheme.CALVER.value,
         choices=[s.value for s in VersionScheme],
     )
     with m.execute() as ctx:
