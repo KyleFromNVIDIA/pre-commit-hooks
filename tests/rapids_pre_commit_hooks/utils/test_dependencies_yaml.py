@@ -356,6 +356,76 @@ def test_traverse_common():
     assert manager.mock_calls == expected_calls
 
 
+def test_traverse_matrix_item():
+    matrix = yaml.SafeLoader("""\
+    value_1: "true"
+    """).get_single_node()
+    matrix_item_key, matrix_item = matrix.value[0]
+    matrix_context = Mock()
+    manager = MagicMock()
+
+    expected_calls = [
+        call.handler.handle_matrix_item(
+            matrix_context, matrix_item_key, matrix_item
+        ),
+    ]
+    manager.reset_mock()
+
+    dependencies_yaml.traverse_matrix_item(
+        manager.handler,
+        matrix_context,
+        matrix_item_key,
+        matrix_item,
+    )
+
+    assert manager.mock_calls == expected_calls
+
+
+def test_traverse_matrix():
+    matrices_item = yaml.SafeLoader("""\
+    matrix:
+        value_1: "true"
+        value_2: "true"
+    """).get_single_node()
+    matrix_key, matrix = matrices_item.value[0]
+    matrices_item_context = Mock()
+    manager = MagicMock()
+
+    expected_calls = [
+        call.handler.handle_matrix(matrices_item_context, matrix_key, matrix),
+        call.handler.handle_matrix().__enter__(),
+        call.traverse_matrix_item(
+            manager.handler,
+            manager.handler.handle_matrix().__enter__(),
+            matrix.value[0][0],
+            matrix.value[0][1],
+        ),
+        call.traverse_matrix_item(
+            manager.handler,
+            manager.handler.handle_matrix().__enter__(),
+            matrix.value[1][0],
+            matrix.value[1][1],
+        ),
+        call.handler.handle_matrix().__exit__(None, None, None),
+    ]
+    manager.reset_mock()
+
+    with (
+        patch(
+            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_matrix_item",
+            manager.traverse_matrix_item,
+        ),
+    ):
+        dependencies_yaml.traverse_matrix(
+            manager.handler,
+            matrices_item_context,
+            matrix_key,
+            matrix,
+        )
+
+    assert manager.mock_calls == expected_calls
+
+
 def test_traverse_matrices_item():
     matrices = yaml.SafeLoader("""\
     - matrix: {}
@@ -368,6 +438,12 @@ def test_traverse_matrices_item():
     expected_calls = [
         call.handler.handle_matrices_item(matrices_context, matrices_item),
         call.handler.handle_matrices_item().__enter__(),
+        call.traverse_matrix(
+            manager.handler,
+            manager.handler.handle_matrices_item().__enter__(),
+            matrices_item.value[0][0],
+            matrices_item.value[0][1],
+        ),
         call.traverse_packages(
             manager.handler,
             manager.handler.handle_matrices_item().__enter__(),
@@ -381,6 +457,10 @@ def test_traverse_matrices_item():
     manager.reset_mock()
 
     with (
+        patch(
+            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_matrix",
+            manager.traverse_matrix,
+        ),
         patch(
             "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_packages",
             manager.traverse_packages,

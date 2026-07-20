@@ -75,6 +75,22 @@ class Handler:
     ) -> "contextlib.AbstractContextManager[Any]":
         return contextlib.nullcontext(matrices_context)
 
+    def handle_matrix(
+        self,
+        matrices_item_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return contextlib.nullcontext(matrices_item_context)
+
+    def handle_matrix_item(
+        self,
+        matrix_context: "Any",  # noqa: ARG002
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> None:
+        pass
+
     def handle_packages(
         self,
         common_or_matrices_item_context: "Any",
@@ -222,6 +238,40 @@ def traverse_common(
                 )
 
 
+def traverse_matrix_item(
+    handler: Handler,
+    matrix_context: "Any",
+    key_node: "yaml.Node",
+    node: "yaml.Node",
+) -> None:
+    if node_has_type(node, "str"):
+        handler.handle_matrix_item(matrix_context, key_node, node)
+
+
+def traverse_matrix(
+    handler: Handler,
+    matrices_item_context: "Any",
+    key_node: "yaml.Node",
+    node: "yaml.Node",
+) -> None:
+    if node_has_type(node, "map"):
+        with handler.handle_matrix(
+            matrices_item_context, key_node, node
+        ) as matrices_context:
+            for matrix_item_key, matrix_item in node.value:
+                traverse_matrix_item(
+                    handler,
+                    matrices_context,
+                    matrix_item_key,
+                    matrix_item,
+                )
+    elif node_has_type(node, "null"):
+        with handler.handle_matrix(
+            matrices_item_context, key_node, node
+        ) as matrices_context:
+            pass
+
+
 def traverse_matrices_item(
     handler: Handler,
     matrices_context: "Any",
@@ -243,6 +293,16 @@ def traverse_matrices_item(
                         matrices_item_context,
                         anchors,
                         used_anchors,
+                        matrix_key,
+                        matrix_value,
+                    )
+                elif (
+                    node_has_type(matrix_key, "str")
+                    and matrix_key.value == "matrix"
+                ):
+                    traverse_matrix(
+                        handler,
+                        matrices_item_context,
                         matrix_key,
                         matrix_value,
                     )
