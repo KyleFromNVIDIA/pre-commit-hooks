@@ -4,7 +4,6 @@
 import contextlib
 import os.path
 from itertools import chain
-from textwrap import dedent
 from unittest.mock import Mock, patch
 
 import pytest
@@ -17,6 +16,7 @@ from rapids_metadata.metadata import (
 
 from rapids_pre_commit_hooks import alpha_spec, lint
 from rapids_pre_commit_hooks.utils import dependencies_yaml
+from rapids_pre_commit_hooks_test_utils import parse_named_spans
 
 latest_version, latest_metadata = max(
     alpha_spec.all_metadata().versions.items(),
@@ -277,35 +277,31 @@ def test_check_alpha_spec():
 
 
 def test_check_alpha_spec_integration(tmp_path):
-    CONTENT = dedent(
+    content, spans = parse_named_spans(
         """\
-        dependencies:
-          test:
-            common:
-              - output_types: pyproject
-                packages:
-                  - cudf>=24.04,<24.06
+        + dependencies:
+        +   test:
+        +     common:
+        +       - output_types: pyproject
+        +         packages:
+        +           - cudf>=24.04,<24.06
+        :             ~~~~~~~~~~~~~~~~~~package
         """
     )
-    REPLACED = "cudf>=24.04,<24.06"
 
     args = Mock(
         mode="development", rapids_version=None, rapids_version_file="VERSION"
     )
-    linter = lint.Linter("dependencies.yaml", CONTENT, "verify-alpha-spec")
+    linter = lint.Linter("dependencies.yaml", content, "verify-alpha-spec")
     with open(os.path.join(tmp_path, "VERSION"), "w") as f:
         f.write(f"{latest_version}\n")
     with set_cwd(tmp_path):
         alpha_spec.check_alpha_spec(linter, args)
 
-    start = CONTENT.find(REPLACED)
-    end = start + len(REPLACED)
-    span = (start, end)
-
     expected_linter = lint.Linter(
-        "dependencies.yaml", CONTENT, "verify-alpha-spec"
+        "dependencies.yaml", content, "verify-alpha-spec"
     )
     expected_linter.add_warning(
-        span, "add alpha spec for RAPIDS package cudf"
-    ).add_replacement(span, "cudf>=24.04,<24.06,>=0.0.0a0")
+        spans["package"], "add alpha spec for RAPIDS package cudf"
+    ).add_replacement(spans["package"], "cudf>=24.04,<24.06,>=0.0.0a0")
     assert linter.warnings == expected_linter.warnings
