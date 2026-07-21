@@ -8,80 +8,128 @@ import yaml
 from rapids_pre_commit_hooks.utils import dependencies_yaml
 
 
-def test_anchor_preserving_loader():
-    loader = dependencies_yaml.AnchorPreservingLoader("- &a A\n- *a")
-    try:
-        root = loader.get_single_node()
-    finally:
-        loader.dispose()
-    assert loader.document_anchors == [{"a": root.value[0]}]
-
-
-@pytest.mark.parametrize(
-    [
-        "used_anchors_before",
-        "node_index",
-        "descend",
-        "anchor",
-        "used_anchors_after",
-    ],
-    [
-        (
-            set(),
-            0,
-            True,
-            "anchor1",
-            {"anchor1"},
-        ),
-        (
-            {"anchor1"},
-            1,
-            True,
-            "anchor2",
-            {"anchor1", "anchor2"},
-        ),
-        (
-            set(),
-            2,
-            True,
-            None,
-            set(),
-        ),
-        (
-            {"anchor1", "anchor2"},
-            0,
-            False,
-            "anchor1",
-            {"anchor1", "anchor2"},
-        ),
-        (
-            {"anchor1", "anchor2"},
-            1,
-            False,
-            "anchor2",
-            {"anchor1", "anchor2"},
-        ),
-    ],
-)
-def test_check_and_mark_anchor(
-    used_anchors_before,
-    node_index,
-    descend,
-    anchor,
-    used_anchors_after,
-):
-    NODES = [Mock() for _ in range(3)]
-    ANCHORS = {
-        "anchor1": NODES[0],
-        "anchor2": NODES[1],
-    }
-    used_anchors = set(used_anchors_before)
-    actual_descend, actual_anchor = dependencies_yaml.check_and_mark_anchor(
-        ANCHORS, used_anchors, NODES[node_index]
+class TestChainedHandler:
+    @pytest.mark.parametrize(
+        ["hook_name", "hook_args"],
+        [
+            pytest.param(
+                "handle_root",
+                (Mock(),),
+                id="handle_root",
+            ),
+            pytest.param(
+                "handle_dependencies",
+                (Mock(), Mock(), Mock()),
+                id="handle_dependencies",
+            ),
+            pytest.param(
+                "handle_dependency_set",
+                (Mock(), Mock(), Mock()),
+                id="handle_dependency_set",
+            ),
+            pytest.param(
+                "handle_common",
+                (Mock(), Mock(), Mock()),
+                id="handle_common",
+            ),
+            pytest.param(
+                "handle_common_item",
+                (Mock(), Mock()),
+                id="handle_common_item",
+            ),
+            pytest.param(
+                "handle_specific",
+                (Mock(), Mock(), Mock()),
+                id="handle_specific",
+            ),
+            pytest.param(
+                "handle_specific_item",
+                (Mock(), Mock()),
+                id="handle_specific_item",
+            ),
+            pytest.param(
+                "handle_matrices",
+                (Mock(), Mock(), Mock()),
+                id="handle_matrices",
+            ),
+            pytest.param(
+                "handle_matrices_item",
+                (Mock(), Mock()),
+                id="handle_matrices_item",
+            ),
+            pytest.param(
+                "handle_matrix",
+                (Mock(), Mock(), Mock()),
+                id="handle_matrix",
+            ),
+            pytest.param(
+                "handle_packages",
+                (Mock(), Mock(), Mock()),
+                id="handle_packages",
+            ),
+        ],
     )
-    assert actual_descend == descend
-    assert actual_anchor == anchor
-    assert used_anchors == used_anchors_after
+    def test_context(self, hook_name, hook_args):
+        manager = MagicMock()
+
+        chained_handler = dependencies_yaml.ChainedHandler()
+        chained_handler.add_handler(manager.handler_1)
+        chained_handler.add_handler(manager.handler_2)
+
+        expected_calls = [
+            getattr(call.handler_1, hook_name)(*hook_args),
+            getattr(call.handler_1, hook_name)().__enter__(
+                getattr(manager.handler_1, hook_name)()
+            ),
+            getattr(call.handler_2, hook_name)(*hook_args),
+            getattr(call.handler_2, hook_name)().__enter__(
+                getattr(manager.handler_2, hook_name)()
+            ),
+            getattr(call.handler_2, hook_name)().__exit__(
+                getattr(manager.handler_2, hook_name)(), None, None, None
+            ),
+            getattr(call.handler_1, hook_name)().__exit__(
+                getattr(manager.handler_1, hook_name)(), None, None, None
+            ),
+        ]
+        manager.reset_mock()
+
+        with getattr(chained_handler, hook_name)(*hook_args):
+            pass
+
+        assert manager.mock_calls == expected_calls
+
+    @pytest.mark.parametrize(
+        ["hook_name", "hook_args"],
+        [
+            pytest.param(
+                "handle_matrix_item",
+                (Mock(), Mock(), Mock()),
+                id="handle_matrix_item",
+            ),
+            pytest.param(
+                "handle_package",
+                (Mock(), "anchor", Mock()),
+                id="handle_package",
+            ),
+        ],
+    )
+    def test_no_context(self, hook_name, hook_args):
+        manager = MagicMock()
+
+        chained_handler = dependencies_yaml.ChainedHandler()
+        chained_handler.add_handler(manager.handler_1)
+        chained_handler.add_handler(manager.handler_2)
+
+        expected_calls = [
+            getattr(call.handler_1, hook_name)(*hook_args),
+            getattr(call.handler_2, hook_name)(*hook_args),
+        ]
+        manager.reset_mock()
+
+        getattr(chained_handler, hook_name)(*hook_args)
+
+        assert manager.mock_calls == expected_calls
 
 
 def test_traverse_package():

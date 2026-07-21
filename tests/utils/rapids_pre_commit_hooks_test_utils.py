@@ -6,10 +6,13 @@ import re
 from textwrap import dedent
 from typing import TYPE_CHECKING
 
+from rapids_pre_commit_hooks.utils.yaml import node_has_type
 from rapids_pre_commit_hooks.lint import Lines
 
 if TYPE_CHECKING:
-    from typing import TypeGuard
+    from typing import Optional, TypeGuard
+
+    import yaml
 
     from rapids_pre_commit_hooks.lint import Span
 
@@ -256,3 +259,21 @@ def parse_named_spans(
     if root_type is not None and not isinstance(postprocessed, root_type):
         raise ParseError
     return content, postprocessed
+
+
+def find_yaml_node_for_span(
+    node: "yaml.Node", span: "Span"
+) -> "Optional[yaml.Node]":
+    if (node.start_mark.index, node.end_mark.index) == span:
+        return node
+    if node_has_type(node, "map"):
+        for key, value in node.value:
+            if found := find_yaml_node_for_span(key, span):
+                return found
+            if found := find_yaml_node_for_span(value, span):
+                return found
+    if node_has_type(node, "seq"):
+        for item in node.value:
+            if found := find_yaml_node_for_span(item, span):
+                return found
+    return None

@@ -15,7 +15,7 @@ from rapids_metadata.metadata import (
 )
 
 from rapids_pre_commit_hooks import alpha_spec, lint
-from rapids_pre_commit_hooks.utils import dependencies_yaml
+from rapids_pre_commit_hooks.utils.yaml import AnchorPreservingLoader
 from rapids_pre_commit_hooks_test_utils import parse_named_spans
 
 latest_version, latest_metadata = max(
@@ -233,7 +233,7 @@ def test_strip_cuda_suffix(name, stripped_name):
 def test_check_package_spec(package, anchor, content, mode, replacement):
     args = Mock(mode=mode)
     linter = lint.Linter("dependencies.yaml", content, "verify-alpha-spec")
-    loader = dependencies_yaml.AnchorPreservingLoader(content)
+    loader = AnchorPreservingLoader(content)
     try:
         composed = loader.get_single_node()
     finally:
