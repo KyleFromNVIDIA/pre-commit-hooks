@@ -1,4 +1,4 @@
-# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION.
+# SPDX-FileCopyrightText: Copyright (c) 2023-2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 - id: verify-alpha-spec
   name: verify-alpha-spec
@@ -65,4 +65,11 @@
   files: |
     (?x)
       (^|/)pyproject[.]toml$
+  args: [--fix]
+- id: verify-use-cuda-wheels
+  name: verify-use-cuda-wheels
+  description: 'make sure CUDA packages are in use_cuda_wheels: "true" dependency sets'
+  entry: verify-use-cuda-wheels
+  language: python
+  files: dependencies[.]yaml$
   args: [--fix]
