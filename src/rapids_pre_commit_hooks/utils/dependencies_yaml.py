@@ -2,11 +2,14 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import contextlib
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
 import yaml
 
 from .yaml import AnchorPreservingLoader, check_and_mark_anchor, node_has_type
+
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
 
 class Handler:
@@ -108,6 +111,149 @@ class Handler:
         item: "yaml.Node",  # noqa: ARG002
     ) -> None:
         pass
+
+
+class ChainedHandler(Handler):
+    def __init__(self) -> None:
+        self.handlers: "list[Handler]" = []
+
+    def add_handler(self, handler: "Handler") -> None:
+        self.handlers.append(handler)
+
+    @contextlib.contextmanager
+    def _handle_context(
+        self, hook_name, *args
+    ) -> "Generator[tuple[Any, ...]]":
+        with contextlib.ExitStack() as context:
+            yield tuple(
+                context.enter_context(getattr(handler, hook_name)(*args))
+                for handler in self.handlers
+            )
+
+    def _handle_no_context(self, hook_name, *args) -> None:
+        for handler in self.handlers:
+            getattr(handler, hook_name)(*args)
+
+    def handle_root(
+        self,
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
+        return self._handle_context("handle_root", value)
+
+    def handle_dependencies(
+        self,
+        root_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
+        return self._handle_context(
+            "handle_dependencies", root_context, key, value
+        )
+
+    def handle_dependency_set(
+        self,
+        dependencies_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_dependency_set", dependencies_context, key, value
+        )
+
+    def handle_common(
+        self,
+        dependency_set_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_common", dependency_set_context, key, value
+        )
+
+    def handle_common_item(
+        self,
+        common_context: "Any",
+        item: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context("handle_common_item", common_context, item)
+
+    def handle_specific(
+        self,
+        dependency_set_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_specific", dependency_set_context, key, value
+        )
+
+    def handle_specific_item(
+        self,
+        specific_context: "Any",
+        item: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_specific_item", specific_context, item
+        )
+
+    def handle_matrices(
+        self,
+        specific_item_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_matrices", specific_item_context, key, value
+        )
+
+    def handle_matrices_item(
+        self,
+        matrices_context: "Any",
+        item: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_matrices_item", matrices_context, item
+        )
+
+    def handle_matrix(
+        self,
+        matrices_item_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_matrix", matrices_item_context, key, value
+        )
+
+    def handle_matrix_item(
+        self,
+        matrix_context: "Any",  # noqa: ARG002
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> None:
+        return self._handle_no_context(
+            "handle_matrix_item", matrix_context, key, value
+        )
+
+    def handle_packages(
+        self,
+        common_or_matrices_item_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return self._handle_context(
+            "handle_packages", common_or_matrices_item_context, key, value
+        )
+
+    def handle_package(
+        self,
+        packages_context: "Any",  # noqa: ARG002
+        anchor: "Optional[str]",  # noqa: ARG002
+        item: "yaml.Node",  # noqa: ARG002
+    ) -> None:
+        return self._handle_no_context(
+            "handle_package", packages_context, anchor, item
+        )
 
 
 def traverse_package(
