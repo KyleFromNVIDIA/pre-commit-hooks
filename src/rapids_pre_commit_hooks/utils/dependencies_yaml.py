@@ -9,7 +9,7 @@ import yaml
 from .yaml import AnchorPreservingLoader, check_and_mark_anchor, node_has_type
 
 if TYPE_CHECKING:
-    from collections.abc import Generator
+    from collections.abc import Generator, Iterable
 
 
 class Handler:
@@ -120,139 +120,139 @@ class ChainedHandler(Handler):
     def add_handler(self, handler: "Handler") -> None:
         self.handlers.append(handler)
 
+    def _handlers_with_context_arg(
+        self, parent_context: "Optional[tuple[Any, ...]]"
+    ) -> "Iterable[tuple[Handler, Any]]":
+        return zip(
+            self.handlers,
+            [()] * len(self.handlers)
+            if parent_context is None
+            else map(lambda c: (c,), parent_context),
+            strict=True,
+        )
+
     @contextlib.contextmanager
     def _handle_context(
-        self, hook_name, *args
+        self,
+        hook_name: str,
+        parent_context: "Optional[tuple[Any, ...]]",
+        *args,
+        **kwargs,
     ) -> "Generator[tuple[Any, ...]]":
         with contextlib.ExitStack() as context:
             yield tuple(
-                context.enter_context(getattr(handler, hook_name)(*args))
-                for handler in self.handlers
+                context.enter_context(
+                    getattr(handler, hook_name)(
+                        *handler_context_arg, *args, **kwargs
+                    )
+                )
+                for handler, handler_context_arg in (
+                    self._handlers_with_context_arg(parent_context)
+                )
             )
 
-    def _handle_no_context(self, hook_name, *args) -> None:
-        for handler in self.handlers:
-            getattr(handler, hook_name)(*args)
+    def _handle_no_context(
+        self,
+        hook_name: str,
+        parent_context: "Optional[tuple[Any, ...]]",
+        *args,
+        **kwargs,
+    ) -> None:
+        for handler, handler_context_arg in self._handlers_with_context_arg(
+            parent_context
+        ):
+            getattr(handler, hook_name)(*handler_context_arg, *args, **kwargs)
 
     def handle_root(
-        self,
-        value: "yaml.Node",  # noqa: ARG002
+        self, *args, **kwargs
     ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
-        return self._handle_context("handle_root", value)
+        return self._handle_context("handle_root", None, *args, **kwargs)
 
     def handle_dependencies(
-        self,
-        root_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
+        self, root_context: "tuple[Any, ...]", *args, **kwargs
     ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_dependencies", root_context, key, value
+            "handle_dependencies", root_context, *args, **kwargs
         )
 
     def handle_dependency_set(
-        self,
-        dependencies_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, dependencies_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_dependency_set", dependencies_context, key, value
+            "handle_dependency_set", dependencies_context, *args, **kwargs
         )
 
     def handle_common(
-        self,
-        dependency_set_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, dependency_set_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_common", dependency_set_context, key, value
+            "handle_common", dependency_set_context, *args, **kwargs
         )
 
     def handle_common_item(
-        self,
-        common_context: "Any",
-        item: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
-        return self._handle_context("handle_common_item", common_context, item)
+        self, common_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
+        return self._handle_context(
+            "handle_common_item", common_context, *args, **kwargs
+        )
 
     def handle_specific(
-        self,
-        dependency_set_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, dependency_set_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_specific", dependency_set_context, key, value
+            "handle_specific", dependency_set_context, *args, **kwargs
         )
 
     def handle_specific_item(
-        self,
-        specific_context: "Any",
-        item: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, specific_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_specific_item", specific_context, item
+            "handle_specific_item", specific_context, *args, **kwargs
         )
 
     def handle_matrices(
-        self,
-        specific_item_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, specific_item_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_matrices", specific_item_context, key, value
+            "handle_matrices", specific_item_context, *args, **kwargs
         )
 
     def handle_matrices_item(
-        self,
-        matrices_context: "Any",
-        item: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, matrices_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_matrices_item", matrices_context, item
+            "handle_matrices_item", matrices_context, *args, **kwargs
         )
 
     def handle_matrix(
-        self,
-        matrices_item_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        self, matrices_item_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_matrix", matrices_item_context, key, value
+            "handle_matrix", matrices_item_context, *args, **kwargs
         )
 
     def handle_matrix_item(
-        self,
-        matrix_context: "Any",  # noqa: ARG002
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
+        self, matrix_context: "tuple[Any, ...]", *args, **kwargs
     ) -> None:
         return self._handle_no_context(
-            "handle_matrix_item", matrix_context, key, value
+            "handle_matrix_item", matrix_context, *args, **kwargs
         )
 
     def handle_packages(
         self,
-        common_or_matrices_item_context: "Any",
-        key: "yaml.Node",  # noqa: ARG002
-        value: "yaml.Node",  # noqa: ARG002
-    ) -> "contextlib.AbstractContextManager[Any]":
+        common_or_matrices_item_context: "tuple[Any, ...]",
+        *args,
+        **kwargs,
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
         return self._handle_context(
-            "handle_packages", common_or_matrices_item_context, key, value
+            "handle_packages", common_or_matrices_item_context, *args, **kwargs
         )
 
     def handle_package(
-        self,
-        packages_context: "Any",  # noqa: ARG002
-        anchor: "Optional[str]",  # noqa: ARG002
-        item: "yaml.Node",  # noqa: ARG002
+        self, packages_context: "tuple[Any, ...]", *args, **kwargs
     ) -> None:
         return self._handle_no_context(
-            "handle_package", packages_context, anchor, item
+            "handle_package", packages_context, *args, **kwargs
         )
 
 

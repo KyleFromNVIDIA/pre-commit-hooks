@@ -4,30 +4,32 @@
 import argparse
 import contextlib
 import re
-from collections.abc import Generator
 from dataclasses import dataclass, field
-from typing import Any, Optional
+from typing import Any, Optional, TYPE_CHECKING
 
-import yaml
 from packaging.requirements import InvalidRequirement, Requirement
-from rapids_pre_commit_hooks.lint import Linter, LintMain
 from rapids_pre_commit_hooks.utils.dependencies_yaml import (
     Handler,
-    traverse_dependencies_yaml,
 )
 
+if TYPE_CHECKING:
+    from collections.abc import Generator
 
-@dataclass
-class CUDAWheelsContext:
-    has_use_cuda_wheels: bool = False
-    use_cuda_wheels_node: "Optional[yaml.Node]" = None
-    suspicious_packages: "list[tuple[yaml.Node, str]]" = field(
-        default_factory=list
-    )
+    import yaml
+
+    from rapids_pre_commit_hooks.lint import Linter
 
 
 class UseCUDAWheelsHandler(Handler):
-    def __init__(self, linter: Linter, args: argparse.Namespace):
+    @dataclass
+    class Context:
+        has_use_cuda_wheels: bool = False
+        use_cuda_wheels_node: "Optional[yaml.Node]" = None
+        suspicious_packages: "list[tuple[yaml.Node, str]]" = field(
+            default_factory=list
+        )
+
+    def __init__(self, linter: "Linter", args: argparse.Namespace):
         self.linter = linter
         self.args = args
 
@@ -37,8 +39,8 @@ class UseCUDAWheelsHandler(Handler):
         dependency_set_context: "Any",  # noqa: ARG002
         key: "yaml.Node",
         value: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[CUDAWheelsContext]":
-        context = CUDAWheelsContext()
+    ) -> "Generator[UseCUDAWheelsHandler.Context]":
+        context = UseCUDAWheelsHandler.Context()
         yield context
 
         for node, name in context.suspicious_packages:
@@ -57,8 +59,8 @@ class UseCUDAWheelsHandler(Handler):
         self,
         matrices_context: "Any",  # noqa: ARG002
         item: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[CUDAWheelsContext]":
-        context = CUDAWheelsContext()
+    ) -> "Generator[UseCUDAWheelsHandler.Context]":
+        context = UseCUDAWheelsHandler.Context()
         yield context
 
         if not context.has_use_cuda_wheels:
@@ -81,16 +83,16 @@ class UseCUDAWheelsHandler(Handler):
     @contextlib.contextmanager
     def handle_matrix(
         self,
-        matrices_item_context: "CUDAWheelsContext",
+        matrices_item_context: "UseCUDAWheelsHandler.Context",
         key: "yaml.Node",
         value: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[CUDAWheelsContext]":
+    ) -> "Generator[UseCUDAWheelsHandler.Context]":
         matrices_item_context.use_cuda_wheels_node = key
         yield matrices_item_context
 
     def handle_matrix_item(
         self,
-        matrix_context: "CUDAWheelsContext",
+        matrix_context: "UseCUDAWheelsHandler.Context",
         key: "yaml.Node",
         value: "yaml.Node",
     ) -> None:
@@ -102,17 +104,17 @@ class UseCUDAWheelsHandler(Handler):
     @contextlib.contextmanager
     def handle_packages(
         self,
-        common_or_matrices_item_context: "CUDAWheelsContext",
+        common_or_matrices_item_context: "UseCUDAWheelsHandler.Context",
         key: "yaml.Node",
         value: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[CUDAWheelsContext]":
+    ) -> "Generator[UseCUDAWheelsHandler.Context]":
         if common_or_matrices_item_context.use_cuda_wheels_node is None:
             common_or_matrices_item_context.use_cuda_wheels_node = key
         yield common_or_matrices_item_context
 
     def handle_package(
         self,
-        packages_context: "CUDAWheelsContext",
+        packages_context: "UseCUDAWheelsHandler.Context",
         anchor: "Optional[str]",  # noqa: ARG002
         item: "yaml.Node",
     ) -> None:
@@ -128,22 +130,3 @@ class UseCUDAWheelsHandler(Handler):
             packages_context.suspicious_packages.append(
                 (item, f"{req.name}[ctk]")
             )
-
-
-def check_use_cuda_wheels(linter: "Linter", args: argparse.Namespace) -> None:
-    handler = UseCUDAWheelsHandler(linter, args)
-    traverse_dependencies_yaml(handler, linter.content)
-
-
-def main() -> None:
-    m = LintMain("verify-use-cuda-wheels")
-    m.argparser.description = (
-        "Verify that RAPIDS packages in dependencies.yaml do (or do not) have "
-        "the alpha spec."
-    )
-    with m.execute() as ctx:
-        ctx.add_check(check_use_cuda_wheels)
-
-
-if __name__ == "__main__":
-    main()

@@ -5,7 +5,10 @@ from unittest.mock import Mock
 
 import pytest
 
-from rapids_pre_commit_hooks import lint, use_cuda_wheels
+from rapids_pre_commit_hooks import lint, dependencies
+from rapids_pre_commit_hooks.dependencies.use_cuda_wheels import (
+    UseCUDAWheelsHandler,
+)
 from rapids_pre_commit_hooks.utils import dependencies_yaml
 from rapids_pre_commit_hooks_test_utils import (
     find_yaml_node_for_span,
@@ -71,7 +74,7 @@ class TestUseCUDAWheelsHandler:
             loader.dispose()
         common_key, common = composed.value[0]
 
-        handler = use_cuda_wheels.UseCUDAWheelsHandler(linter, args)
+        handler = UseCUDAWheelsHandler(linter, args)
         with handler.handle_common(
             Mock(), common_key, common
         ) as common_context:
@@ -241,7 +244,7 @@ class TestUseCUDAWheelsHandler:
         finally:
             loader.dispose()
 
-        handler = use_cuda_wheels.UseCUDAWheelsHandler(linter, args)
+        handler = UseCUDAWheelsHandler(linter, args)
         with handler.handle_matrices_item(
             Mock(), composed
         ) as matrices_item_context:
@@ -307,7 +310,7 @@ class TestUseCUDAWheelsHandler:
         matrix_key = find_yaml_node_for_span(composed, spans["matrix_key"])
         matrix = find_yaml_node_for_span(composed, spans["matrix"])
 
-        handler = use_cuda_wheels.UseCUDAWheelsHandler(linter, args)
+        handler = UseCUDAWheelsHandler(linter, args)
         original_node = find_yaml_node_for_span(
             composed, spans["original_node"]
         )
@@ -359,7 +362,7 @@ class TestUseCUDAWheelsHandler:
             loader.dispose()
         matrix_item_key, matrix_item = composed.value[0]
 
-        handler = use_cuda_wheels.UseCUDAWheelsHandler(linter, args)
+        handler = UseCUDAWheelsHandler(linter, args)
         matrix_context = Mock(
             use_cuda_wheels_node=None, has_use_cuda_wheels=False
         )
@@ -425,7 +428,7 @@ class TestUseCUDAWheelsHandler:
         )
         node = find_yaml_node_for_span(composed, spans["node"])
 
-        handler = use_cuda_wheels.UseCUDAWheelsHandler(linter, args)
+        handler = UseCUDAWheelsHandler(linter, args)
         with handler.handle_packages(
             Mock(use_cuda_wheels_node=original_node), packages_key, packages
         ) as packages_context:
@@ -483,7 +486,7 @@ class TestUseCUDAWheelsHandler:
         finally:
             loader.dispose()
 
-        handler = use_cuda_wheels.UseCUDAWheelsHandler(linter, args)
+        handler = UseCUDAWheelsHandler(linter, args)
         packages_context = Mock(suspicious_packages=[])
         handler.handle_package(packages_context, None, package_node)
         assert packages_context.suspicious_packages == (
@@ -745,5 +748,5 @@ def test_check_use_cuda_wheels_integration(content, warnings):
         )
     ]
 
-    use_cuda_wheels.check_use_cuda_wheels(linter, args)
+    dependencies.check_dependencies(linter, args)
     assert linter.warnings == expected_warnings
