@@ -76,6 +76,10 @@ class TestChainedHandler:
         chained_handler.add_handler(manager.handler_1)
         chained_handler.add_handler(manager.handler_2)
 
+        expected_context = (
+            getattr(manager.handler_1, hook_name)().__enter__(),
+            getattr(manager.handler_2, hook_name)().__enter__(),
+        )
         expected_calls = [
             getattr(call.handler_1, hook_name)(*hook_args),
             getattr(call.handler_1, hook_name)().__enter__(
@@ -94,8 +98,8 @@ class TestChainedHandler:
         ]
         manager.reset_mock()
 
-        with getattr(chained_handler, hook_name)(*hook_args):
-            pass
+        with getattr(chained_handler, hook_name)(*hook_args) as context:
+            assert context == expected_context
 
         assert manager.mock_calls == expected_calls
 

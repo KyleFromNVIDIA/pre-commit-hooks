@@ -123,7 +123,7 @@ class ChainedHandler(Handler):
     @contextlib.contextmanager
     def _handle_context(
         self, hook_name, *args
-    ) -> "Generator[tuple[contextlib.AbstractContextManager[Any], ...]]":
+    ) -> "Generator[tuple[Any, ...]]":
         with contextlib.ExitStack() as context:
             yield tuple(
                 context.enter_context(getattr(handler, hook_name)(*args))
