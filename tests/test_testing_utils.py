@@ -5,7 +5,12 @@ import contextlib
 
 import pytest
 
-from rapids_pre_commit_hooks_test_utils import ParseError, parse_named_spans
+from rapids_pre_commit_hooks.utils.yaml import AnchorPreservingLoader
+from rapids_pre_commit_hooks_test_utils import (
+    ParseError,
+    find_yaml_node_for_span,
+    parse_named_spans,
+)
 
 
 @pytest.mark.parametrize(
@@ -674,3 +679,125 @@ def test_parse_named_spans(
         content, spans = parse_named_spans(content, root_type)
         assert content == expected_content
         assert spans == expected_spans
+
+
+@pytest.mark.parametrize(
+    ["content", "node_lambda"],
+    [
+        pytest.param(
+            """\
+            + root_node
+            : ~~~~~~~~~node
+            """,
+            lambda root: root,
+            id="basic-string",
+        ),
+        pytest.param(
+            """\
+            + 12345
+            : ~~~~~node
+            """,
+            lambda root: root,
+            id="basic-number",
+        ),
+        pytest.param(
+            """\
+            + null
+            : ~~~~node
+            """,
+            lambda root: root,
+            id="basic-null",
+        ),
+        pytest.param(
+            """\
+            + key1: value1
+            : >node
+            + key2: value2
+            :              !node
+            """,
+            lambda root: root,
+            id="map-root",
+        ),
+        pytest.param(
+            """\
+            + key1: value1
+            : ~~~~node
+            + key2: value2
+            """,
+            lambda root: root.value[0][0],
+            id="map-key-1",
+        ),
+        pytest.param(
+            """\
+            + key1: value1
+            :       ~~~~~~node
+            + key2: value2
+            """,
+            lambda root: root.value[0][1],
+            id="map-value-1",
+        ),
+        pytest.param(
+            """\
+            + key1: value1
+            + key2: value2
+            : ~~~~node
+            """,
+            lambda root: root.value[1][0],
+            id="map-key-2",
+        ),
+        pytest.param(
+            """\
+            + key1: value1
+            + key2: value2
+            :       ~~~~~~node
+            """,
+            lambda root: root.value[1][1],
+            id="map-value-2",
+        ),
+        pytest.param(
+            """\
+            + - item1
+            : >node
+            + - item2
+            :         !node
+            """,
+            lambda root: root,
+            id="seq-root",
+        ),
+        pytest.param(
+            """\
+            + - item1
+            :   ~~~~~node
+            + - item2
+            """,
+            lambda root: root.value[0],
+            id="seq-item-1",
+        ),
+        pytest.param(
+            """\
+            + - item1
+            + - item2
+            :   ~~~~~node
+            """,
+            lambda root: root.value[1],
+            id="seq-item-2",
+        ),
+        pytest.param(
+            """\
+            + root_node
+            :  ~~~node
+            """,
+            lambda _root: None,
+            id="no-node",
+        ),
+    ],
+)
+def test_find_yaml_node_for_span(content, node_lambda):
+    content, spans = parse_named_spans(content)
+    loader = AnchorPreservingLoader(content)
+    try:
+        root = loader.get_single_node()
+    finally:
+        loader.dispose()
+
+    assert find_yaml_node_for_span(root, spans["node"]) == node_lambda(root)
