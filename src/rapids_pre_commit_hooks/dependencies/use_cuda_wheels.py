@@ -40,6 +40,7 @@ def is_nvidia_library_package(name: str) -> bool:
         "nvidia-cuda-sanitizer-api",
         "nvidia-cuda-tileiras",
         "nvidia-cudla",
+        "nvidia-cudss",
         "nvidia-cufft",
         "nvidia-cufile",
         "nvidia-curand",
