@@ -54,6 +54,9 @@ def test_is_nvidia_library_package(name, expected_result):
             "cupy-cuda12x[other,ctk]", True, id="cupy-cuda12x-other-and-ctk"
         ),
         pytest.param("cupy-cuda12x[other]", False, id="cupy-cuda12x-other"),
+        pytest.param(
+            "cupy-cuda12x[ctk-other]", False, id="cupy-cuda12x-false-ctk"
+        ),
         pytest.param("cupy-cuda12x", False, id="cupy-cuda12x-no-extras"),
         pytest.param("other-package", False, id="other-package"),
         pytest.param("other-package[ctk]", False, id="other-package-ctk"),
