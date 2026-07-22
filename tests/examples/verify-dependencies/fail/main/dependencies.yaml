@@ -1,0 +1,6 @@
+dependencies:
+  file_set:
+    common:
+      - output_types: pyproject
+        packages:
+          - cupy-cuda13x[ctk]

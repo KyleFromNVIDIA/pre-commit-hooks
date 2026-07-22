@@ -10,82 +10,103 @@ from rapids_pre_commit_hooks.utils import dependencies_yaml
 
 class TestChainedHandler:
     @pytest.mark.parametrize(
-        ["hook_name", "hook_args"],
+        ["hook_name", "use_context", "hook_args"],
         [
             pytest.param(
                 "handle_root",
+                False,
                 (Mock(),),
                 id="handle_root",
             ),
             pytest.param(
                 "handle_dependencies",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_dependencies",
             ),
             pytest.param(
                 "handle_dependency_set",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_dependency_set",
             ),
             pytest.param(
                 "handle_common",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_common",
             ),
             pytest.param(
                 "handle_common_item",
-                (Mock(), Mock()),
+                True,
+                (Mock(),),
                 id="handle_common_item",
             ),
             pytest.param(
                 "handle_specific",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_specific",
             ),
             pytest.param(
                 "handle_specific_item",
-                (Mock(), Mock()),
+                True,
+                (Mock(),),
                 id="handle_specific_item",
             ),
             pytest.param(
                 "handle_matrices",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_matrices",
             ),
             pytest.param(
                 "handle_matrices_item",
-                (Mock(), Mock()),
+                True,
+                (Mock(),),
                 id="handle_matrices_item",
             ),
             pytest.param(
                 "handle_matrix",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_matrix",
             ),
             pytest.param(
                 "handle_packages",
-                (Mock(), Mock(), Mock()),
+                True,
+                (Mock(), Mock()),
                 id="handle_packages",
             ),
         ],
     )
-    def test_context(self, hook_name, hook_args):
+    def test_context(self, hook_name, use_context, hook_args):
         manager = MagicMock()
 
         chained_handler = dependencies_yaml.ChainedHandler()
         chained_handler.add_handler(manager.handler_1)
         chained_handler.add_handler(manager.handler_2)
 
+        context_arg, context_arg_1, context_arg_2 = (
+            (
+                ((manager.context_1, manager.context_2),),
+                (manager.context_1,),
+                (manager.context_2,),
+            )
+            if use_context
+            else ((), (), ())
+        )
+
         expected_context = (
             getattr(manager.handler_1, hook_name)().__enter__(),
             getattr(manager.handler_2, hook_name)().__enter__(),
         )
         expected_calls = [
-            getattr(call.handler_1, hook_name)(*hook_args),
+            getattr(call.handler_1, hook_name)(*context_arg_1, *hook_args),
             getattr(call.handler_1, hook_name)().__enter__(
                 getattr(manager.handler_1, hook_name)()
             ),
-            getattr(call.handler_2, hook_name)(*hook_args),
+            getattr(call.handler_2, hook_name)(*context_arg_2, *hook_args),
             getattr(call.handler_2, hook_name)().__enter__(
                 getattr(manager.handler_2, hook_name)()
             ),
@@ -98,7 +119,9 @@ class TestChainedHandler:
         ]
         manager.reset_mock()
 
-        with getattr(chained_handler, hook_name)(*hook_args) as context:
+        with getattr(chained_handler, hook_name)(
+            *context_arg, *hook_args
+        ) as context:
             assert context == expected_context
 
         assert manager.mock_calls == expected_calls
@@ -108,12 +131,12 @@ class TestChainedHandler:
         [
             pytest.param(
                 "handle_matrix_item",
-                (Mock(), Mock(), Mock()),
+                (Mock(), Mock()),
                 id="handle_matrix_item",
             ),
             pytest.param(
                 "handle_package",
-                (Mock(), "anchor", Mock()),
+                ("anchor", Mock()),
                 id="handle_package",
             ),
         ],
@@ -126,12 +149,14 @@ class TestChainedHandler:
         chained_handler.add_handler(manager.handler_2)
 
         expected_calls = [
-            getattr(call.handler_1, hook_name)(*hook_args),
-            getattr(call.handler_2, hook_name)(*hook_args),
+            getattr(call.handler_1, hook_name)(manager.context_1, *hook_args),
+            getattr(call.handler_2, hook_name)(manager.context_2, *hook_args),
         ]
         manager.reset_mock()
 
-        getattr(chained_handler, hook_name)(*hook_args)
+        getattr(chained_handler, hook_name)(
+            (manager.context_1, manager.context_2), *hook_args
+        )
 
         assert manager.mock_calls == expected_calls
 
