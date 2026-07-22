@@ -4,10 +4,12 @@
 from unittest.mock import Mock
 
 import pytest
+from packaging.requirements import Requirement
 
 from rapids_pre_commit_hooks import lint, dependencies
 from rapids_pre_commit_hooks.dependencies.use_cuda_wheels import (
     UseCUDAWheelsHandler,
+    is_cupy_ctk_package,
     is_nvidia_library_package,
 )
 from rapids_pre_commit_hooks.utils import dependencies_yaml
@@ -20,25 +22,42 @@ from rapids_pre_commit_hooks_test_utils import (
 @pytest.mark.parametrize(
     ["name", "expected_result"],
     [
+        pytest.param("cuda-toolkit", True, id="cuda-toolkit"),
+        pytest.param("cuda-toolkit[cufile]", True, id="cuda-toolkit-extra"),
+        pytest.param("cuda-toolkit-cu12", False, id="cuda-toolkit-cu12"),
+        pytest.param("nvidia-curand", True, id="nvidia-curand"),
+        pytest.param("nvidia-curand-cu12", True, id="nvidia-curand-cu12"),
+        pytest.param("nvidia-curand-cu13", True, id="nvidia-curand-cu13"),
         pytest.param(
-            name,
-            expected_result,
-            id=name,
-        )
-        for name, expected_result in [
-            ("cuda-toolkit", True),
-            ("cuda-toolkit-cu12", False),
-            ("nvidia-curand", True),
-            ("nvidia-curand-cu12", True),
-            ("nvidia-curand-cu13", True),
-            ("nvidia-curand-cu13a", False),
-            ("anvidia-curand-cu13", False),
-            ("other-package-cu13", False),
-        ]
+            "nvidia-curand-cu13a", False, id="nvidia-curand-cu13-suffix"
+        ),
+        pytest.param(
+            "anvidia-curand-cu13", False, id="nvidia-curand-cu13-prefix"
+        ),
+        pytest.param("other-package", False, id="other-package"),
+        pytest.param("other-package-cu13", False, id="other-package-cu13"),
     ],
 )
 def test_is_nvidia_library_package(name, expected_result):
-    assert is_nvidia_library_package(name) == expected_result
+    assert is_nvidia_library_package(Requirement(name)) == expected_result
+
+
+@pytest.mark.parametrize(
+    ["name", "expected_result"],
+    [
+        pytest.param("cupy-cuda12x[ctk]", True, id="cupy-cuda12x-ctk"),
+        pytest.param("cupy-cuda13x[ctk]", True, id="cupy-cuda13x-ctk"),
+        pytest.param(
+            "cupy-cuda12x[ctk,other]", True, id="cupy-cuda12x-ctk-and-other"
+        ),
+        pytest.param("cupy-cuda12x[other]", False, id="cupy-cuda12x-other"),
+        pytest.param("cupy-cuda12x", False, id="cupy-cuda12x-no-extras"),
+        pytest.param("other-package", False, id="other-package"),
+        pytest.param("other-package[ctk]", False, id="other-package-ctk"),
+    ],
+)
+def test_is_cupy_ctk_package(name, expected_result):
+    assert is_cupy_ctk_package(Requirement(name)) == expected_result
 
 
 class TestUseCUDAWheelsHandler:

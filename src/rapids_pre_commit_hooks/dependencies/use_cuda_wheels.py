@@ -20,8 +20,8 @@ if TYPE_CHECKING:
     from rapids_pre_commit_hooks.lint import Linter
 
 
-def is_nvidia_library_package(name: str) -> bool:
-    if name == "cuda-toolkit":
+def is_nvidia_library_package(req: "Requirement") -> bool:
+    if req.name == "cuda-toolkit":
         return True
     nvidia_library_packages = {
         "nvidia-cublas",
@@ -57,10 +57,16 @@ def is_nvidia_library_package(name: str) -> bool:
         "nvidia-nvvm",
     }
     if (
-        match := re.search(r"^(?P<package>[a-z-]+)(?:-cu[0-9]+)?$", name)
+        match := re.search(r"^(?P<package>[a-z-]+)(?:-cu[0-9]+)?$", req.name)
     ) and match.group("package") in nvidia_library_packages:
         return True
     return False
+
+
+def is_cupy_ctk_package(req: "Requirement") -> bool:
+    return bool(
+        re.search(r"^cupy-cuda[0-9]+x$", req.name) and "ctk" in req.extras
+    )
 
 
 class UseCUDAWheelsHandler(Handler):
@@ -165,11 +171,9 @@ class UseCUDAWheelsHandler(Handler):
             req = Requirement(item.value)
         except InvalidRequirement:
             return
-        if is_nvidia_library_package(req.name):
+        if is_nvidia_library_package(req):
             packages_context.suspicious_packages.append((item, req.name))
-        elif (
-            re.search(r"^cupy-cuda[0-9]+x$", req.name) and "ctk" in req.extras
-        ):
+        elif is_cupy_ctk_package(req):
             packages_context.suspicious_packages.append(
                 (item, f"{req.name}[ctk]")
             )
