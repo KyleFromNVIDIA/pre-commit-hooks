@@ -20,6 +20,48 @@ if TYPE_CHECKING:
     from rapids_pre_commit_hooks.lint import Linter
 
 
+def is_nvidia_library_package(name: str) -> bool:
+    if name == "cuda-toolkit":
+        return True
+    nvidia_library_packages = {
+        "nvidia-cublas",
+        "nvidia-cuda-cccl",
+        "nvidia-cuda-crt",
+        "nvidia-cuda-culibos",
+        "nvidia-cuda-cuobjdump",
+        "nvidia-cuda-cupti",
+        "nvidia-cuda-cuxxfilt",
+        "nvidia-cuda-nvcc",
+        "nvidia-cuda-nvdisasm",
+        "nvidia-cuda-nvrtc",
+        "nvidia-cuda-opencl",
+        "nvidia-cuda-profiler-api",
+        "nvidia-cuda-runtime",
+        "nvidia-cuda-sanitizer-api",
+        "nvidia-cuda-tileiras",
+        "nvidia-cudla",
+        "nvidia-cufft",
+        "nvidia-cufile",
+        "nvidia-curand",
+        "nvidia-cusolver",
+        "nvidia-cusparse",
+        "nvidia-libnvcomp",
+        "nvidia-npp",
+        "nvidia-nvfatbin",
+        "nvidia-nvjitlink",
+        "nvidia-nvjpeg",
+        "nvidia-nvml-dev",
+        "nvidia-nvptxcompiler",
+        "nvidia-nvtx",
+        "nvidia-nvvm",
+    }
+    if (
+        match := re.search(r"^(?P<package>[a-z-]+)(?:-cu[0-9]+)?$", name)
+    ) and match.group("package") in nvidia_library_packages:
+        return True
+    return False
+
+
 class UseCUDAWheelsHandler(Handler):
     @dataclass
     class Context:
@@ -122,7 +164,7 @@ class UseCUDAWheelsHandler(Handler):
             req = Requirement(item.value)
         except InvalidRequirement:
             return
-        if req.name == "cuda-toolkit":
+        if is_nvidia_library_package(req.name):
             packages_context.suspicious_packages.append((item, req.name))
         elif (
             re.search(r"^cupy-cuda[0-9]+x$", req.name) and "ctk" in req.extras

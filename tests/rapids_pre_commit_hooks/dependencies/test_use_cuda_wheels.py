@@ -8,12 +8,37 @@ import pytest
 from rapids_pre_commit_hooks import lint, dependencies
 from rapids_pre_commit_hooks.dependencies.use_cuda_wheels import (
     UseCUDAWheelsHandler,
+    is_nvidia_library_package,
 )
 from rapids_pre_commit_hooks.utils import dependencies_yaml
 from rapids_pre_commit_hooks_test_utils import (
     find_yaml_node_for_span,
     parse_named_spans,
 )
+
+
+@pytest.mark.parametrize(
+    ["name", "expected_result"],
+    [
+        pytest.param(
+            name,
+            expected_result,
+            id=name,
+        )
+        for name, expected_result in [
+            ("cuda-toolkit", True),
+            ("cuda-toolkit-cu12", False),
+            ("nvidia-curand", True),
+            ("nvidia-curand-cu12", True),
+            ("nvidia-curand-cu13", True),
+            ("nvidia-curand-cu13a", False),
+            ("anvidia-curand-cu13", False),
+            ("other-package-cu13", False),
+        ]
+    ],
+)
+def test_is_nvidia_library_package(name, expected_result):
+    assert is_nvidia_library_package(name) == expected_result
 
 
 class TestUseCUDAWheelsHandler:
