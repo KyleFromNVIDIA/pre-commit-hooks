@@ -469,6 +469,12 @@ class TestUseCUDAWheelsHandler:
                 id="cuda-toolkit",
             ),
             pytest.param(
+                "cuda-toolkit[cufile]==13.0",
+                True,
+                "cuda-toolkit",
+                id="cuda-toolkit-extras",
+            ),
+            pytest.param(
                 "cupy-cuda12x[ctk]",
                 True,
                 "cupy-cuda12x[ctk]",
