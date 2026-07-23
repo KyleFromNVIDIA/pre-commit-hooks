@@ -5,11 +5,13 @@ import contextlib
 
 import pytest
 
+from rapids_pre_commit_hooks.lint import LintWarning, Note, Replacement
 from rapids_pre_commit_hooks.utils.yaml import AnchorPreservingLoader
 from rapids_pre_commit_hooks_test_utils import (
     ParseError,
     find_yaml_node_for_span,
     parse_named_spans,
+    zip_expected_warnings,
 )
 
 
@@ -679,6 +681,63 @@ def test_parse_named_spans(
         content, spans = parse_named_spans(content, root_type)
         assert content == expected_content
         assert spans == expected_spans
+
+
+@pytest.mark.parametrize(
+    ["content", "warnings", "expected_warnings"],
+    [
+        pytest.param(
+            """\
+            + This is a warning
+            : ~~~~0.warning
+            :      ~~0.notes.0
+            :         ~0.notes.1
+            :                  ^0.replacements.0
+            : ~~~~0.replacements.1
+            :     ^1.warning
+            """,
+            [
+                {
+                    "warning": "First warning",
+                    "notes": [
+                        "First note",
+                        "Second note",
+                    ],
+                    "replacements": [
+                        "!",
+                        "THIS",
+                    ],
+                },
+                {
+                    "warning": "Second warning",
+                },
+            ],
+            [
+                LintWarning(
+                    (0, 4),
+                    "First warning",
+                    notes=[
+                        Note((5, 7), "First note"),
+                        Note((8, 9), "Second note"),
+                    ],
+                    replacements=[
+                        Replacement((17, 17), "!"),
+                        Replacement((0, 4), "THIS"),
+                    ],
+                ),
+                LintWarning(
+                    (4, 4),
+                    "Second warning",
+                    notes=[],
+                    replacements=[],
+                ),
+            ],
+        ),
+    ],
+)
+def test_zip_expected_warnings(content, warnings, expected_warnings):
+    content, spans = parse_named_spans(content, list)
+    assert zip_expected_warnings(spans, warnings) == expected_warnings
 
 
 @pytest.mark.parametrize(

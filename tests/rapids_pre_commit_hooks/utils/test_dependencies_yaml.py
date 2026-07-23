@@ -5,7 +5,12 @@ from unittest.mock import MagicMock, Mock, call, patch
 
 import pytest
 import yaml
+
 from rapids_pre_commit_hooks.utils import dependencies_yaml
+from rapids_pre_commit_hooks_test_utils import (
+    find_yaml_node_for_span,
+    parse_named_spans,
+)
 
 
 class TestChainedHandler:
@@ -41,6 +46,12 @@ class TestChainedHandler:
                 True,
                 (Mock(),),
                 id="handle_common_item",
+            ),
+            pytest.param(
+                "handle_output_types",
+                True,
+                (Mock(), Mock()),
+                id="handle_output_types",
             ),
             pytest.param(
                 "handle_specific",
@@ -138,6 +149,11 @@ class TestChainedHandler:
                 "handle_package",
                 ("anchor", Mock()),
                 id="handle_package",
+            ),
+            pytest.param(
+                "handle_output_type",
+                (Mock(),),
+                id="handle_output_type",
             ),
         ],
     )
@@ -347,6 +363,96 @@ def test_traverse_packages_used_anchor():
     assert manager.mock_calls == expected_calls
 
 
+def test_traverse_output_type():
+    output_types = yaml.SafeLoader("""\
+    [requirements]
+    """).get_single_node()
+    output_type = output_types.value[0]
+    output_types_context = Mock()
+    manager = MagicMock()
+
+    expected_calls = [
+        call.handler.handle_output_type(output_types_context, output_type),
+    ]
+    manager.reset_mock()
+
+    dependencies_yaml.traverse_output_type(
+        manager.handler, output_types_context, output_type
+    )
+
+    assert manager.mock_calls == expected_calls
+
+
+@pytest.mark.parametrize(
+    ["content"],
+    [
+        pytest.param(
+            """\
+            + output_types: pyproject
+            : ~~~~~~~~~~~~key_node
+            :               ~~~~~~~~~node
+            :               ~~~~~~~~~items.0
+            """,
+            id="string-item",
+        ),
+        pytest.param(
+            """\
+            + output_types: [requirements, pyproject]
+            : ~~~~~~~~~~~~key_node
+            :               ~~~~~~~~~~~~~~~~~~~~~~~~~node
+            :                ~~~~~~~~~~~~items.0
+            :                              ~~~~~~~~~items.1
+            """,
+            id="list",
+        ),
+        pytest.param(
+            """\
+            + output_types: []
+            : ~~~~~~~~~~~~key_node
+            :               ~~node
+            """,
+            id="empty-list",
+        ),
+    ],
+)
+def test_traverse_output_types(content):
+    content, spans = parse_named_spans(content)
+    item = yaml.SafeLoader(content).get_single_node()
+    output_types_key = find_yaml_node_for_span(item, spans["key_node"])
+    output_types = find_yaml_node_for_span(item, spans["node"])
+    item_context = Mock()
+    manager = MagicMock()
+
+    expected_calls = [
+        call.handler.handle_output_types(
+            item_context, output_types_key, output_types
+        ),
+        call.handler.handle_output_types().__enter__(),
+        *(
+            call.traverse_output_type(
+                manager.handler,
+                manager.handler.handle_output_types().__enter__(),
+                find_yaml_node_for_span(item, output_type_span),
+            )
+            for output_type_span in spans.get("items", [])
+        ),
+        call.handler.handle_output_types().__exit__(None, None, None),
+    ]
+    manager.reset_mock()
+
+    with (
+        patch(
+            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_output_type",
+            manager.traverse_output_type,
+        ),
+    ):
+        dependencies_yaml.traverse_output_types(
+            manager.handler, item_context, output_types_key, output_types
+        )
+
+    assert manager.mock_calls == expected_calls
+
+
 def test_traverse_common_item():
     common = yaml.SafeLoader("""\
     - output_types: pyproject
@@ -359,6 +465,12 @@ def test_traverse_common_item():
     expected_calls = [
         call.handler.handle_common_item(common_context, common_item),
         call.handler.handle_common_item().__enter__(),
+        call.traverse_output_types(
+            manager.handler,
+            manager.handler.handle_common_item().__enter__(),
+            common_item.value[0][0],
+            common_item.value[0][1],
+        ),
         call.traverse_packages(
             manager.handler,
             manager.handler.handle_common_item().__enter__(),
@@ -372,6 +484,10 @@ def test_traverse_common_item():
     manager.reset_mock()
 
     with (
+        patch(
+            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_output_types",
+            manager.traverse_output_types,
+        ),
         patch(
             "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_packages",
             manager.traverse_packages,
@@ -621,6 +737,12 @@ def test_traverse_specific_item():
     expected_calls = [
         call.handler.handle_specific_item(specific_context, specific_item),
         call.handler.handle_specific_item().__enter__(),
+        call.traverse_output_types(
+            manager.handler,
+            manager.handler.handle_specific_item().__enter__(),
+            specific_item.value[0][0],
+            specific_item.value[0][1],
+        ),
         call.traverse_matrices(
             manager.handler,
             manager.handler.handle_specific_item().__enter__(),
@@ -634,6 +756,10 @@ def test_traverse_specific_item():
     manager.reset_mock()
 
     with (
+        patch(
+            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_output_types",
+            manager.traverse_output_types,
+        ),
         patch(
             "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_matrices",
             manager.traverse_matrices,
