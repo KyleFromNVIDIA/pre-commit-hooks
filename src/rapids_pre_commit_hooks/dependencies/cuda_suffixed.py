@@ -48,17 +48,17 @@ class CUDASuffixedHandler(Handler):
     @dataclass
     class CommonItemContext:
         has_python_output_type: bool = False
-        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
-        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
 
     @dataclass
     class SpecificItemContext:
         has_python_output_type: bool = False
-        matrices_item_contexts: "list[CUDASuffixedHandler.MatricesItemContext]" = field(
+        matrices_item_contexts: "list[CUDASuffixedHandler.MatricesItemContext]" = field(  # noqa: E501
             default_factory=list
         )
 
@@ -69,10 +69,10 @@ class CUDASuffixedHandler(Handler):
         cuda_suffixed: "Optional[bool]" = None
         cuda_node: "Optional[yaml.Node]" = None
         cuda_major: "Optional[int]" = None
-        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
-        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
 
