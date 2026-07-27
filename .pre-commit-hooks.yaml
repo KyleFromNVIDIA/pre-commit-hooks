@@ -47,6 +47,9 @@
   language: python
   files: (^|/)dependencies[.]yaml$
   args: [--fix]
+  additional_dependencies:
+    - --extra-index-url=https://pypi.anaconda.org/rapidsai-wheels-nightly/simple
+    - .[dependencies]
 - id: verify-hardcoded-version
   name: verify-hardcoded-version
   description: make sure RAPIDS version is not hard-coded in files
