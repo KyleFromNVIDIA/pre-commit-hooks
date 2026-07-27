@@ -48,19 +48,19 @@ class CUDASuffixedHandler(Handler):
     @dataclass
     class CommonItemContext:
         has_python_output_type: bool = False
-        suspicious_suffixed_packages: (
-            "list[tuple[str, Optional[str], yaml.Node]]"
-        ) = field(default_factory=list)
-        suspicious_unsuffixed_packages: (
-            "list[tuple[str, Optional[str], yaml.Node]]"
-        ) = field(default_factory=list)
+        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+            default_factory=list
+        )
+        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+            default_factory=list
+        )
 
     @dataclass
     class SpecificItemContext:
         has_python_output_type: bool = False
-        matrices_item_contexts: (
-            "list[CUDASuffixedHandler.MatricesItemContext]"
-        ) = field(default_factory=list)
+        matrices_item_contexts: "list[CUDASuffixedHandler.MatricesItemContext]" = field(
+            default_factory=list
+        )
 
     @dataclass
     class MatricesItemContext:
@@ -69,12 +69,12 @@ class CUDASuffixedHandler(Handler):
         cuda_suffixed: "Optional[bool]" = None
         cuda_node: "Optional[yaml.Node]" = None
         cuda_major: "Optional[int]" = None
-        suspicious_suffixed_packages: (
-            "list[tuple[str, Optional[str], yaml.Node]]"
-        ) = field(default_factory=list)
-        suspicious_unsuffixed_packages: (
-            "list[tuple[str, Optional[str], yaml.Node]]"
-        ) = field(default_factory=list)
+        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+            default_factory=list
+        )
+        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(
+            default_factory=list
+        )
 
     def __init__(self, linter: "Linter", args: "argparse.Namespace") -> None:
         self.linter = linter
