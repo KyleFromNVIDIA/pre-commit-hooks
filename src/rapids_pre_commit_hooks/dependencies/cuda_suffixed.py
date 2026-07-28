@@ -25,6 +25,13 @@ if TYPE_CHECKING:
     from rapids_metadata.metadata import RAPIDSMetadata, RAPIDSVersion
 
 
+# Extra packages that need to have/not have the -cu* suffix that are not in
+# RAPIDS
+EXTRA_CUDA_SUFFIXED_PACKAGES: set[str] = {
+    "xgboost",
+}
+
+
 @cache
 def all_metadata() -> "RAPIDSMetadata":
     return fetch_latest()
@@ -282,15 +289,18 @@ class CUDASuffixedHandler(Handler):
         except InvalidRequirement:
             return
 
-        if req.name in get_rapids_version(self.args).cuda_suffixed_packages:
+        cuda_suffixed_packages = (
+            get_rapids_version(self.args).cuda_suffixed_packages
+            | EXTRA_CUDA_SUFFIXED_PACKAGES
+        )
+
+        if req.name in cuda_suffixed_packages:
             packages_context.suspicious_unsuffixed_packages.append(
                 (req.name, anchor, item)
             )
         elif (
             match := re.search(r"^(?P<package>.*)-cu[0-9]+$", req.name)
-        ) and match.group("package") in get_rapids_version(
-            self.args
-        ).cuda_suffixed_packages:
+        ) and match.group("package") in cuda_suffixed_packages:
             packages_context.suspicious_suffixed_packages.append(
                 (match.group("package"), anchor, item)
             )
