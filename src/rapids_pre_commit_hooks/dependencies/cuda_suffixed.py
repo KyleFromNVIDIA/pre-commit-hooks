@@ -9,7 +9,6 @@ from functools import cache
 from typing import Optional, TYPE_CHECKING
 
 from packaging.requirements import InvalidRequirement, Requirement
-from packaging.version import Version
 
 from rapids_pre_commit_hooks.utils.dependencies_yaml import (
     Handler,
@@ -263,9 +262,11 @@ class CUDASuffixedHandler(Handler):
                 matrix_context.cuda_suffixed = True
             elif value.value == "false":
                 matrix_context.cuda_suffixed = False
-        elif key.value == "cuda":
+        elif key.value == "cuda" and (
+            match := re.search(r"^(?P<major>[0-9]+)", value.value)
+        ):
             matrix_context.cuda_node = value
-            matrix_context.cuda_major = Version(value.value).major
+            matrix_context.cuda_major = int(match.group("major"))
 
     def handle_package(
         self,

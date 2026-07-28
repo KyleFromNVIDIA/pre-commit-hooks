@@ -534,6 +534,14 @@ class TestCUDASuffixedHandler:
                 id="cuda-version",
             ),
             pytest.param(
+                'cuda: "12.*"',
+                None,
+                False,
+                12,
+                True,
+                id="cuda-version-wildcard",
+            ),
+            pytest.param(
                 'other: "value"',
                 None,
                 False,
