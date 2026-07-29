@@ -382,6 +382,23 @@ class TestCUDASuffixedHandler:
                 """\
                 + matrix:
                 +   cuda_suffixed: "true"
+                +   cuda: "12.*"
+                + packages:
+                +   - package-cu12
+                :     ~~~~~~~~~~~~suffixed.0
+                """,
+                True,
+                True,
+                12,
+                [("package", "-cu12", None)],
+                [],
+                [],
+                id="true-suffixed-package-cuda-major",
+            ),
+            pytest.param(
+                """\
+                + matrix:
+                +   cuda_suffixed: "true"
                 +   cuda: "13.*"
                 + packages:
                 +   - package-cu12
