@@ -157,6 +157,7 @@ class TestCUDASuffixedHandler:
                 (
                     name,
                     None,
+                    None,
                     find_yaml_node_for_span(composed, span),
                 )
                 for name, span in zip(
@@ -207,7 +208,7 @@ class TestCUDASuffixedHandler:
                 True,
                 None,
                 None,
-                [("package", None)],
+                [("package", "-cu12", None)],
                 [],
                 [
                     {
@@ -316,10 +317,62 @@ class TestCUDASuffixedHandler:
                 True,
                 True,
                 None,
-                [("package", None)],
+                [("package", "-cu12", None)],
                 [],
                 [],
                 id="true-suffixed-package",
+            ),
+            pytest.param(
+                """\
+                + matrix:
+                +   cuda_suffixed: "true"
+                +   cuda: "13.*"
+                + packages:
+                +   - package-cu12
+                :     ~~~~~~~~~~~~suffixed.0
+                :     ~~~~~~~~~~~~warnings.0.warning
+                :     ~~~~~~~~~~~~warnings.0.replacements.0
+                """,
+                True,
+                True,
+                13,
+                [("package", "-cu12", None)],
+                [],
+                [
+                    {
+                        "warning": 'package "package" has wrong -cu* suffix',
+                        "replacements": [
+                            "package-cu13",
+                        ],
+                    },
+                ],
+                id="true-suffixed-package-wrong-cuda-version",
+            ),
+            pytest.param(
+                """\
+                + matrix:
+                +   cuda_suffixed: "true"
+                +   cuda: "13.*"
+                + packages:
+                +   - &package_anchor package-cu12
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~suffixed.0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.replacements.0
+                """,
+                True,
+                True,
+                13,
+                [("package", "-cu12", "package_anchor")],
+                [],
+                [
+                    {
+                        "warning": 'package "package" has wrong -cu* suffix',
+                        "replacements": [
+                            "&package_anchor package-cu13",
+                        ],
+                    },
+                ],
+                id="true-suffixed-package-wrong-cuda-version-anchor",
             ),
             pytest.param(
                 """\
@@ -335,7 +388,7 @@ class TestCUDASuffixedHandler:
                 True,
                 False,
                 None,
-                [("package", None)],
+                [("package", "-cu12", None)],
                 [],
                 [
                     {
@@ -362,7 +415,7 @@ class TestCUDASuffixedHandler:
                 True,
                 False,
                 None,
-                [("package", "package_anchor")],
+                [("package", "-cu12", "package_anchor")],
                 [],
                 [
                     {
@@ -400,7 +453,7 @@ class TestCUDASuffixedHandler:
                 False,
                 None,
                 None,
-                [("package", None)],
+                [("package", "-cu12", None)],
                 [],
                 [],
                 id="non-python-output",
@@ -438,8 +491,13 @@ class TestCUDASuffixedHandler:
                 cuda_suffixed=cuda_suffixed,
                 cuda_major=cuda_major,
                 suspicious_suffixed_packages=[
-                    (name, anchor, find_yaml_node_for_span(composed, span))
-                    for (name, anchor), span in zip(
+                    (
+                        name,
+                        suffix,
+                        anchor,
+                        find_yaml_node_for_span(composed, span),
+                    )
+                    for (name, suffix, anchor), span in zip(
                         suffixed_names,
                         spans.get("suffixed", []),
                         strict=True,
@@ -602,13 +660,13 @@ class TestCUDASuffixedHandler:
             ),
             pytest.param(
                 "package-cu12",
-                ["package"],
+                [("package", "-cu12")],
                 [],
                 id="suffixed",
             ),
             pytest.param(
                 "package-cu123==1.0",
-                ["package"],
+                [("package", "-cu123")],
                 [],
                 id="multi-digit-suffix",
             ),
@@ -648,7 +706,8 @@ class TestCUDASuffixedHandler:
             handler.handle_package(context, None, package_node)
 
         assert context.suspicious_suffixed_packages == [
-            (name, None, package_node) for name in suffixed_names
+            (name, suffix, None, package_node)
+            for (name, suffix) in suffixed_names
         ]
         assert context.suspicious_unsuffixed_packages == [
             (name, None, package_node) for name in unsuffixed_names

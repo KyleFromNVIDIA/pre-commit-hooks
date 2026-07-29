@@ -54,7 +54,7 @@ class CUDASuffixedHandler(Handler):
     @dataclass
     class CommonItemContext:
         has_python_output_type: bool = False
-        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
+        suspicious_suffixed_packages: "list[tuple[str, str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
         suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
@@ -75,7 +75,7 @@ class CUDASuffixedHandler(Handler):
         cuda_suffixed: "Optional[bool]" = None
         cuda_node: "Optional[yaml.Node]" = None
         cuda_major: "Optional[int]" = None
-        suspicious_suffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
+        suspicious_suffixed_packages: "list[tuple[str, str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
         suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
@@ -117,7 +117,12 @@ class CUDASuffixedHandler(Handler):
         yield context
 
         if context.has_python_output_type:
-            for name, anchor, node in context.suspicious_suffixed_packages:
+            for (
+                name,
+                suffix,
+                anchor,
+                node,
+            ) in context.suspicious_suffixed_packages:
                 w = self.linter.add_warning(
                     (node.start_mark.index, node.end_mark.index),
                     f'package "{name}" in common dependency set',
@@ -158,6 +163,7 @@ class CUDASuffixedHandler(Handler):
                 if matrices_item_context.cuda_suffixed is None:
                     for (
                         name,
+                        suffix,
                         anchor,
                         node,
                     ) in matrices_item_context.suspicious_suffixed_packages:
@@ -194,6 +200,34 @@ class CUDASuffixedHandler(Handler):
                                 'cuda_suffixed: "false" instead',
                             )
                 elif matrices_item_context.cuda_suffixed:
+                    if matrices_item_context.cuda_major:
+                        for (
+                            name,
+                            suffix,
+                            anchor,
+                            node,
+                        ) in (
+                            matrices_item_context.suspicious_suffixed_packages
+                        ):
+                            if (
+                                suffix
+                                != f"cu{matrices_item_context.cuda_major}"
+                            ):
+                                w = self.linter.add_warning(
+                                    (
+                                        node.start_mark.index,
+                                        node.end_mark.index,
+                                    ),
+                                    f'package "{name}" has wrong -cu* suffix',
+                                )
+                                anchor_text = f"&{anchor} " if anchor else ""
+                                w.add_replacement(
+                                    (
+                                        node.start_mark.index,
+                                        node.end_mark.index,
+                                    ),
+                                    f"{anchor_text}{name}-cu{matrices_item_context.cuda_major}",
+                                )
                     for (
                         name,
                         anchor,
@@ -222,6 +256,7 @@ class CUDASuffixedHandler(Handler):
                 else:
                     for (
                         name,
+                        suffix,
                         anchor,
                         node,
                     ) in matrices_item_context.suspicious_suffixed_packages:
@@ -299,8 +334,10 @@ class CUDASuffixedHandler(Handler):
                 (req.name, anchor, item)
             )
         elif (
-            match := re.search(r"^(?P<package>.*)-cu[0-9]+$", req.name)
+            match := re.search(
+                r"^(?P<package>.*)(?P<suffix>-cu[0-9]+)$", req.name
+            )
         ) and match.group("package") in cuda_suffixed_packages:
             packages_context.suspicious_suffixed_packages.append(
-                (match.group("package"), anchor, item)
+                (match.group("package"), match.group("suffix"), anchor, item)
             )
