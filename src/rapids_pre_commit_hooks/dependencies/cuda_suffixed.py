@@ -211,7 +211,7 @@ class CUDASuffixedHandler(Handler):
                         ):
                             if (
                                 suffix
-                                != f"cu{matrices_item_context.cuda_major}"
+                                != f"-cu{matrices_item_context.cuda_major}"
                             ):
                                 w = self.linter.add_warning(
                                     (
@@ -221,12 +221,17 @@ class CUDASuffixedHandler(Handler):
                                     f'package "{name}" has wrong -cu* suffix',
                                 )
                                 anchor_text = f"&{anchor} " if anchor else ""
+                                req = Requirement(node.value)
+                                req.name = (
+                                    f"{name}"
+                                    f"-cu{matrices_item_context.cuda_major}"
+                                )
                                 w.add_replacement(
                                     (
                                         node.start_mark.index,
                                         node.end_mark.index,
                                     ),
-                                    f"{anchor_text}{name}-cu{matrices_item_context.cuda_major}",
+                                    f"{anchor_text}{req}",
                                 )
                     for (
                         name,
@@ -240,9 +245,13 @@ class CUDASuffixedHandler(Handler):
                         )
                         if matrices_item_context.cuda_major:
                             anchor_text = f"&{anchor} " if anchor else ""
+                            req = Requirement(node.value)
+                            req.name = (
+                                f"{name}-cu{matrices_item_context.cuda_major}"
+                            )
                             w.add_replacement(
                                 (node.start_mark.index, node.end_mark.index),
-                                f"{anchor_text}{name}-cu{matrices_item_context.cuda_major}",
+                                f"{anchor_text}{req}",
                             )
                         elif matrices_item_context.matrix_node:
                             w.add_note(
@@ -266,9 +275,11 @@ class CUDASuffixedHandler(Handler):
                             'with cuda_suffixed: "false"',
                         )
                         anchor_text = f"&{anchor} " if anchor else ""
+                        req = Requirement(node.value)
+                        req.name = name
                         w.add_replacement(
                             (node.start_mark.index, node.end_mark.index),
-                            f"{anchor_text}{name}",
+                            f"{anchor_text}{req}",
                         )
 
     @contextlib.contextmanager

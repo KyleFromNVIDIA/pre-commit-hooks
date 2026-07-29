@@ -309,6 +309,62 @@ class TestCUDASuffixedHandler:
             pytest.param(
                 """\
                 + matrix:
+                : ~~~~~~matrix
+                +   cuda_suffixed: "true"
+                +   cuda: "12.8"
+                + packages:
+                +   - package==26.08.*,>=0.0.0a0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~unsuffixed.0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.replacements.0
+                """,
+                True,
+                True,
+                12,
+                [],
+                [("package", None)],
+                [
+                    {
+                        "warning": 'package "package" in specific dependency '
+                        'set with cuda_suffixed: "true"',
+                        "replacements": [
+                            "package-cu12==26.08.*,>=0.0.0a0",
+                        ],
+                    },
+                ],
+                id="true-unsuffixed-package-cuda-major-version-req",
+            ),
+            pytest.param(
+                """\
+                + matrix:
+                : ~~~~~~matrix
+                +   cuda_suffixed: "true"
+                +   cuda: "12.8"
+                + packages:
+                +   - &package_anchor package
+                :     ~~~~~~~~~~~~~~~~~~~~~~~unsuffixed.0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+                :     ~~~~~~~~~~~~~~~~~~~~~~~warnings.0.replacements.0
+                """,
+                True,
+                True,
+                12,
+                [],
+                [("package", "package_anchor")],
+                [
+                    {
+                        "warning": 'package "package" in specific dependency '
+                        'set with cuda_suffixed: "true"',
+                        "replacements": [
+                            "&package_anchor package-cu12",
+                        ],
+                    },
+                ],
+                id="true-unsuffixed-package-cuda-major-anchor",
+            ),
+            pytest.param(
+                """\
+                + matrix:
                 +   cuda_suffixed: "true"
                 + packages:
                 +   - package-cu12
@@ -346,7 +402,33 @@ class TestCUDASuffixedHandler:
                         ],
                     },
                 ],
-                id="true-suffixed-package-wrong-cuda-version",
+                id="true-suffixed-package-wrong-cuda-major",
+            ),
+            pytest.param(
+                """\
+                + matrix:
+                +   cuda_suffixed: "true"
+                +   cuda: "13.*"
+                + packages:
+                +   - package-cu12==26.08.*,>=0.0.0a0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~suffixed.0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.replacements.0
+                """,
+                True,
+                True,
+                13,
+                [("package", "-cu12", None)],
+                [],
+                [
+                    {
+                        "warning": 'package "package" has wrong -cu* suffix',
+                        "replacements": [
+                            "package-cu13==26.08.*,>=0.0.0a0",
+                        ],
+                    },
+                ],
+                id="true-suffixed-package-wrong-cuda-major-version-req",
             ),
             pytest.param(
                 """\
@@ -372,7 +454,7 @@ class TestCUDASuffixedHandler:
                         ],
                     },
                 ],
-                id="true-suffixed-package-wrong-cuda-version-anchor",
+                id="true-suffixed-package-wrong-cuda-major-anchor",
             ),
             pytest.param(
                 """\
@@ -400,6 +482,33 @@ class TestCUDASuffixedHandler:
                     },
                 ],
                 id="false-suffixed-package",
+            ),
+            pytest.param(
+                """\
+                + matrix:
+                : ~~~~~~matrix
+                +   cuda_suffixed: "false"
+                + packages:
+                +   - package-cu12==26.08.*,>=0.0.0a0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~suffixed.0
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+                :     ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.replacements.0
+                """,
+                True,
+                False,
+                None,
+                [("package", "-cu12", None)],
+                [],
+                [
+                    {
+                        "warning": 'package "package" in specific dependency '
+                        'set with cuda_suffixed: "false"',
+                        "replacements": [
+                            "package==26.08.*,>=0.0.0a0",
+                        ],
+                    },
+                ],
+                id="false-suffixed-package-version-req",
             ),
             pytest.param(
                 """\
