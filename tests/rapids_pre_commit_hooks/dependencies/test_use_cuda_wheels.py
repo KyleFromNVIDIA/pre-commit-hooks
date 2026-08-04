@@ -13,6 +13,7 @@ from rapids_pre_commit_hooks.dependencies.use_cuda_wheels import (
     is_nvidia_library_package,
 )
 from rapids_pre_commit_hooks.utils import dependencies_yaml
+from rapids_pre_commit_hooks.utils.yaml import Anchor, AnchorType
 from rapids_pre_commit_hooks_test_utils import (
     find_yaml_node_for_span,
     parse_named_spans,
@@ -432,7 +433,7 @@ class TestUseCUDAWheelsHandler:
         )
 
     @pytest.mark.parametrize(
-        ["content"],
+        ["content", "anchor", "packages_is_reference_anchor"],
         [
             pytest.param(
                 """\
@@ -443,6 +444,8 @@ class TestUseCUDAWheelsHandler:
                 : ~~~~~~~~packages_key
                 :           ~~packages
                 """,
+                None,
+                False,
                 id="matrix-node",
             ),
             pytest.param(
@@ -452,11 +455,41 @@ class TestUseCUDAWheelsHandler:
                 : ~~~~~~~~packages_key
                 :           ~~packages
                 """,
+                None,
+                False,
                 id="no-matrix-node",
+            ),
+            pytest.param(
+                """\
+                + matrix: {}
+                : ~~~~~~original_node
+                : ~~~~~~node
+                + packages: []
+                : ~~~~~~~~packages_key
+                :           ~~packages
+                """,
+                Anchor(AnchorType.DEFINITION, "packages"),
+                False,
+                id="anchor-definition",
+            ),
+            pytest.param(
+                """\
+                + matrix: {}
+                : ~~~~~~original_node
+                : ~~~~~~node
+                + packages: []
+                : ~~~~~~~~packages_key
+                :           ~~packages
+                """,
+                Anchor(AnchorType.REFERENCE, "packages"),
+                True,
+                id="anchor-reference",
             ),
         ],
     )
-    def test_handle_packages(self, content):
+    def test_handle_packages(
+        self, content, anchor, packages_is_reference_anchor
+    ):
         content, spans = parse_named_spans(content)
 
         args = Mock()
@@ -480,58 +513,108 @@ class TestUseCUDAWheelsHandler:
 
         handler = UseCUDAWheelsHandler(linter, args)
         with handler.handle_packages(
-            Mock(use_cuda_wheels_node=original_node), packages_key, packages
+            Mock(use_cuda_wheels_node=original_node),
+            anchor,
+            packages_key,
+            packages,
         ) as packages_context:
-            assert packages_context.use_cuda_wheels_node == node
+            assert packages_context.parent_context.use_cuda_wheels_node == node
+            assert (
+                packages_context.packages_is_reference_anchor
+                == packages_is_reference_anchor
+            )
 
     @pytest.mark.parametrize(
-        ["content", "expected_node", "expected_name"],
+        [
+            "content",
+            "anchor",
+            "packages_is_reference_anchor",
+            "expected_node",
+            "expected_name",
+        ],
         [
             pytest.param(
                 "cuda-toolkit==13.0",
+                None,
+                False,
                 True,
                 "cuda-toolkit",
                 id="cuda-toolkit",
             ),
             pytest.param(
                 "cuda-toolkit[cufile]==13.0",
+                None,
+                False,
                 True,
                 "cuda-toolkit",
                 id="cuda-toolkit-extras",
             ),
             pytest.param(
                 "cupy-cuda12x[ctk]",
+                None,
+                False,
                 True,
                 "cupy-cuda12x[ctk]",
                 id="cupy-ctk",
             ),
             pytest.param(
                 "cupy-cuda13x[ctk,other]",
+                None,
+                False,
                 True,
                 "cupy-cuda13x[ctk]",
                 id="cupy-ctk-and-other",
             ),
             pytest.param(
                 "cupy-cuda13x[other]",
+                None,
+                False,
                 False,
                 None,
                 id="cupy-others",
             ),
             pytest.param(
                 "cupy-cuda13x",
+                None,
+                False,
                 False,
                 None,
                 id="cupy-no-extras",
             ),
             pytest.param(
                 "other-package",
+                None,
+                False,
                 False,
                 None,
                 id="other-package",
             ),
+            pytest.param(
+                "cuda-toolkit==13.0",
+                Anchor(AnchorType.DEFINITION, "cuda_toolkit"),
+                False,
+                True,
+                "cuda-toolkit",
+                id="anchor-definition",
+            ),
+            pytest.param(
+                "cuda-toolkit==13.0",
+                Anchor(AnchorType.REFERENCE, "cuda_toolkit"),
+                False,
+                False,
+                None,
+                id="anchor-reference",
+            ),
         ],
     )
-    def test_handle_package(self, content, expected_node, expected_name):
+    def test_handle_package(
+        self,
+        content,
+        anchor,
+        packages_is_reference_anchor,
+        expected_node,
+        expected_name,
+    ):
         args = Mock()
         linter = lint.Linter(
             "dependencies.yaml", content, "verify-dependencies"
@@ -543,9 +626,12 @@ class TestUseCUDAWheelsHandler:
             loader.dispose()
 
         handler = UseCUDAWheelsHandler(linter, args)
-        packages_context = Mock(suspicious_packages=[])
-        handler.handle_package(packages_context, None, package_node)
-        assert packages_context.suspicious_packages == (
+        packages_context = Mock(
+            parent_context=Mock(suspicious_packages=[]),
+            packages_is_reference_anchor=packages_is_reference_anchor,
+        )
+        handler.handle_package(packages_context, anchor, package_node)
+        assert packages_context.parent_context.suspicious_packages == (
             [(package_node, expected_name)] if expected_node else []
         )
 

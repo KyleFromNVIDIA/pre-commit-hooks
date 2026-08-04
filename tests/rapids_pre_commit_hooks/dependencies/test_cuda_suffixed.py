@@ -11,6 +11,7 @@ from rapids_pre_commit_hooks.dependencies.cuda_suffixed import (
     CUDASuffixedHandler,
 )
 from rapids_pre_commit_hooks.utils import dependencies_yaml
+from rapids_pre_commit_hooks.utils.yaml import Anchor, AnchorType
 from rapids_pre_commit_hooks_test_utils import (
     find_yaml_node_for_span,
     parse_named_spans,
@@ -768,60 +769,132 @@ class TestCUDASuffixedHandler:
     @pytest.mark.parametrize(
         [
             "requirement",
+            "anchor",
+            "packages_is_reference_anchor",
             "suffixed_names",
             "unsuffixed_names",
         ],
         [
             pytest.param(
                 "package",
+                None,
+                False,
                 [],
                 ["package"],
                 id="unsuffixed",
             ),
             pytest.param(
                 "package[extra]>=1.0",
+                None,
+                False,
                 [],
                 ["package"],
                 id="unsuffixed-with-extras-and-version",
             ),
             pytest.param(
                 "package-cu12",
+                None,
+                False,
                 [("package", "-cu12")],
                 [],
                 id="suffixed",
             ),
             pytest.param(
                 "package-cu123==1.0",
+                None,
+                False,
                 [("package", "-cu123")],
                 [],
                 id="multi-digit-suffix",
             ),
             pytest.param(
                 "package-cu12x",
+                None,
+                False,
                 [],
                 [],
                 id="invalid-cuda-suffix",
             ),
             pytest.param(
                 "other-cu12",
+                None,
+                False,
                 [],
                 [],
                 id="unknown-package",
             ),
             pytest.param(
                 "not a requirement",
+                None,
+                False,
                 [],
                 [],
                 id="invalid-requirement",
             ),
+            pytest.param(
+                "package",
+                Anchor(AnchorType.DEFINITION, "package"),
+                False,
+                [],
+                ["package"],
+                id="unsuffixed-anchor-definition",
+            ),
+            pytest.param(
+                "package",
+                Anchor(AnchorType.REFERENCE, "package"),
+                False,
+                [],
+                [],
+                id="unsuffixed-anchor-reference",
+            ),
+            pytest.param(
+                "package",
+                None,
+                True,
+                [],
+                [],
+                id="unsuffixed-packages-is-reference-anchor",
+            ),
+            pytest.param(
+                "package-cu12",
+                Anchor(AnchorType.DEFINITION, "package"),
+                False,
+                [("package", "-cu12")],
+                [],
+                id="suffixed-anchor-definition",
+            ),
+            pytest.param(
+                "package-cu12",
+                Anchor(AnchorType.REFERENCE, "package"),
+                False,
+                [],
+                [],
+                id="suffixed-anchor-reference",
+            ),
+            pytest.param(
+                "package-cu12",
+                None,
+                True,
+                [],
+                [],
+                id="suffixed-packages-is-reference-anchor",
+            ),
         ],
     )
     def test_handle_package(
-        self, requirement, suffixed_names, unsuffixed_names
+        self,
+        requirement,
+        anchor,
+        packages_is_reference_anchor,
+        suffixed_names,
+        unsuffixed_names,
     ):
         package_node = _compose(requirement)
         rapids_version = SimpleNamespace(cuda_suffixed_packages={"package"})
-        context = CUDASuffixedHandler.MatricesItemContext()
+        context = CUDASuffixedHandler.PackagesContext(
+            CUDASuffixedHandler.MatricesItemContext(),
+            packages_is_reference_anchor,
+        )
         handler = CUDASuffixedHandler(Mock(), Mock())
 
         with patch(
@@ -829,14 +902,20 @@ class TestCUDASuffixedHandler:
             "get_rapids_version",
             return_value=rapids_version,
         ):
-            handler.handle_package(context, None, package_node)
+            handler.handle_package(context, anchor, package_node)
 
-        assert context.suspicious_suffixed_packages == [
-            (name, suffix, None, package_node)
+        assert context.parent_context.suspicious_suffixed_packages == [
+            (
+                name,
+                suffix,
+                anchor.anchor_name if anchor else None,
+                package_node,
+            )
             for (name, suffix) in suffixed_names
         ]
-        assert context.suspicious_unsuffixed_packages == [
-            (name, None, package_node) for name in unsuffixed_names
+        assert context.parent_context.suspicious_unsuffixed_packages == [
+            (name, anchor.anchor_name if anchor else None, package_node)
+            for name in unsuffixed_names
         ]
 
 

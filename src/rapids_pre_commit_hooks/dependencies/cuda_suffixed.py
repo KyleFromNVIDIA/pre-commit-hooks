@@ -10,9 +10,10 @@ from typing import Optional, TYPE_CHECKING
 
 from packaging.requirements import InvalidRequirement, Requirement
 
-from rapids_pre_commit_hooks.utils.dependencies_yaml import (
+from ..utils.dependencies_yaml import (
     Handler,
 )
+from ..utils.yaml import Anchor, is_reference_anchor
 from rapids_metadata.remote import fetch_latest
 
 if TYPE_CHECKING:
@@ -21,7 +22,7 @@ if TYPE_CHECKING:
 
     import yaml
 
-    from rapids_pre_commit_hooks.lint import Linter
+    from ..lint import Linter
     from rapids_metadata.metadata import RAPIDSMetadata, RAPIDSVersion
 
 
@@ -81,6 +82,14 @@ class CUDASuffixedHandler(Handler):
         suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
+
+    @dataclass
+    class PackagesContext:
+        parent_context: (
+            "CUDASuffixedHandler.CommonItemContext | "
+            "CUDASuffixedHandler.MatricesItemContext"
+        )
+        packages_is_reference_anchor: bool
 
     def __init__(self, linter: "Linter", args: "argparse.Namespace") -> None:
         self.linter = linter
@@ -321,15 +330,34 @@ class CUDASuffixedHandler(Handler):
             matrix_context.cuda_node = value
             matrix_context.cuda_major = int(match.group("major"))
 
-    def handle_package(
+    def handle_packages(
         self,
-        packages_context: (
+        common_or_matrices_item_context: (
             "CUDASuffixedHandler.CommonItemContext | "
             "CUDASuffixedHandler.MatricesItemContext"
         ),
-        anchor: "Optional[str]",
+        anchor: "Optional[Anchor]",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.nullcontext[CUDASuffixedHandler.PackagesContext]":
+        return contextlib.nullcontext(
+            CUDASuffixedHandler.PackagesContext(
+                common_or_matrices_item_context, is_reference_anchor(anchor)
+            )
+        )
+
+    def handle_package(
+        self,
+        packages_context: "CUDASuffixedHandler.PackagesContext",
+        anchor: "Optional[Anchor]",
         item: "yaml.Node",
     ) -> None:
+        if (
+            packages_context.packages_is_reference_anchor
+            or is_reference_anchor(anchor)
+        ):
+            return
+
         try:
             req = Requirement(item.value)
         except InvalidRequirement:
@@ -341,14 +369,19 @@ class CUDASuffixedHandler(Handler):
         )
 
         if req.name in cuda_suffixed_packages:
-            packages_context.suspicious_unsuffixed_packages.append(
-                (req.name, anchor, item)
+            packages_context.parent_context.suspicious_unsuffixed_packages.append(
+                (req.name, anchor.anchor_name if anchor else None, item)
             )
         elif (
             match := re.search(
                 r"^(?P<package>.*)(?P<suffix>-cu[0-9]+)$", req.name
             )
         ) and match.group("package") in cuda_suffixed_packages:
-            packages_context.suspicious_suffixed_packages.append(
-                (match.group("package"), match.group("suffix"), anchor, item)
+            packages_context.parent_context.suspicious_suffixed_packages.append(
+                (
+                    match.group("package"),
+                    match.group("suffix"),
+                    anchor.anchor_name if anchor else None,
+                    item,
+                )
             )

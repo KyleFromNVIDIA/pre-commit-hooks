@@ -15,7 +15,11 @@ from rapids_metadata.metadata import (
 )
 
 from rapids_pre_commit_hooks import alpha_spec, lint
-from rapids_pre_commit_hooks.utils.yaml import AnchorPreservingLoader
+from rapids_pre_commit_hooks.utils.yaml import (
+    Anchor,
+    AnchorPreservingLoader,
+    AnchorType,
+)
 from rapids_pre_commit_hooks_test_utils import parse_named_spans
 
 latest_version, latest_metadata = max(
@@ -129,131 +133,315 @@ def test_strip_cuda_suffix(name, stripped_name):
     assert alpha_spec.strip_cuda_suffix(Mock(), name) == stripped_name
 
 
-@pytest.mark.parametrize(
-    ["package", "anchor", "content", "mode", "replacement"],
-    [
-        *chain(
-            *(
-                [
-                    (p, None, p, "development", f"{p}>=0.0.0a0"),
-                    (p, None, p, "release", None),
-                    (p, None, f"{p}>=0.0.0a0", "development", None),
-                    (p, None, f"{p}>=0.0.0a0", "release", p),
-                ]
-                for p in latest_metadata.prerelease_packages
+class TestAlphaSpecHandler:
+    @pytest.mark.parametrize(
+        ["anchor", "packages_is_reference_anchor"],
+        [
+            pytest.param(
+                None,
+                False,
+                id="no-anchor",
+            ),
+            pytest.param(
+                Anchor(AnchorType.DEFINITION, "anchor"),
+                False,
+                id="anchor-definition",
+            ),
+            pytest.param(
+                Anchor(AnchorType.REFERENCE, "anchor"),
+                True,
+                id="anchor-reference",
+            ),
+        ],
+    )
+    def test_handle_packages(self, anchor, packages_is_reference_anchor):
+        handler = alpha_spec.AlphaSpecHandler(Mock(), Mock())
+
+        with handler.handle_packages(
+            None, anchor, Mock(), Mock()
+        ) as packages_context:
+            assert (
+                packages_context.packages_is_reference_anchor
+                == packages_is_reference_anchor
             )
-        ),
-        *chain(
-            *(
-                [
-                    (
-                        f"{p}-cu12",
-                        None,
-                        f"{p}-cu12",
-                        "development",
-                        f"{p}-cu12>=0.0.0a0",
-                    ),
-                    (f"{p}-cu11", None, f"{p}-cu11", "release", None),
-                    (
-                        f"{p}-cu12",
-                        None,
-                        f"{p}-cu12>=0.0.0a0",
-                        "development",
-                        None,
-                    ),
-                    (
-                        f"{p}-cu11",
-                        None,
-                        f"{p}-cu11>=0.0.0a0",
-                        "release",
-                        f"{p}-cu11",
-                    ),
-                ]
-                for p in latest_metadata.prerelease_packages
-                & latest_metadata.cuda_suffixed_packages
-            )
-        ),
-        *chain(
-            *(
-                [
-                    (f"{p}-cu12", None, f"{p}-cu12", "development", None),
-                    (f"{p}-cu12", None, f"{p}-cu12>=0.0.0a0", "release", None),
-                ]
-                for p in latest_metadata.prerelease_packages
-                & (
-                    latest_metadata.all_packages
-                    - latest_metadata.cuda_suffixed_packages
+
+    @pytest.mark.parametrize(
+        [
+            "package",
+            "anchor",
+            "content",
+            "mode",
+            "packages_is_reference_anchor",
+            "replacement",
+        ],
+        [
+            *chain(
+                *(
+                    [
+                        pytest.param(
+                            p,
+                            None,
+                            p,
+                            "development",
+                            False,
+                            f"{p}>=0.0.0a0",
+                            id=f"{p}-development-no-suffix",
+                        ),
+                        pytest.param(
+                            p,
+                            None,
+                            p,
+                            "release",
+                            False,
+                            None,
+                            id=f"{p}-release-no-suffix",
+                        ),
+                        pytest.param(
+                            p,
+                            None,
+                            f"{p}>=0.0.0a0",
+                            "development",
+                            False,
+                            None,
+                            id=f"{p}-development-suffix",
+                        ),
+                        pytest.param(
+                            p,
+                            None,
+                            f"{p}>=0.0.0a0",
+                            "release",
+                            False,
+                            p,
+                            id=f"{p}-release-suffix",
+                        ),
+                    ]
+                    for p in latest_metadata.prerelease_packages
                 )
+            ),
+            *chain(
+                *(
+                    [
+                        pytest.param(
+                            f"{p}-cu12",
+                            None,
+                            f"{p}-cu12",
+                            "development",
+                            False,
+                            f"{p}-cu12>=0.0.0a0",
+                            id=f"{p}-cu12-development-no-suffix",
+                        ),
+                        pytest.param(
+                            f"{p}-cu11",
+                            None,
+                            f"{p}-cu11",
+                            "release",
+                            False,
+                            None,
+                            id=f"{p}-cu11-release-no-suffix",
+                        ),
+                        pytest.param(
+                            f"{p}-cu12",
+                            None,
+                            f"{p}-cu12>=0.0.0a0",
+                            "development",
+                            False,
+                            None,
+                            id=f"{p}-cu12-development-suffix",
+                        ),
+                        pytest.param(
+                            f"{p}-cu11",
+                            None,
+                            f"{p}-cu11>=0.0.0a0",
+                            "release",
+                            False,
+                            f"{p}-cu11",
+                            id=f"{p}-cu11-release-suffix",
+                        ),
+                    ]
+                    for p in latest_metadata.prerelease_packages
+                    & latest_metadata.cuda_suffixed_packages
+                )
+            ),
+            *chain(
+                *(
+                    [
+                        pytest.param(
+                            f"{p}-cu12",
+                            None,
+                            f"{p}-cu12",
+                            "development",
+                            False,
+                            None,
+                            id=f"{p}-cu12-development-no-suffix",
+                        ),
+                        pytest.param(
+                            f"{p}-cu12",
+                            None,
+                            f"{p}-cu12>=0.0.0a0",
+                            "release",
+                            False,
+                            None,
+                            id=f"{p}-cu12-release-suffix",
+                        ),
+                    ]
+                    for p in latest_metadata.prerelease_packages
+                    & (
+                        latest_metadata.all_packages
+                        - latest_metadata.cuda_suffixed_packages
+                    )
+                )
+            ),
+            pytest.param(
+                "cuml",
+                None,
+                "cuml>=24.04,<24.06",
+                "development",
+                False,
+                "cuml>=24.04,<24.06,>=0.0.0a0",
+                id="version-range-development-no-suffix",
+            ),
+            pytest.param(
+                "cuml",
+                None,
+                "cuml>=24.04,<24.06,>=0.0.0a0",
+                "release",
+                False,
+                "cuml>=24.04,<24.06",
+                id="version-range-release-suffix",
+            ),
+            pytest.param(
+                "cuml",
+                Anchor(AnchorType.DEFINITION, "cuml"),
+                "&cuml cuml>=24.04,<24.06",
+                "development",
+                False,
+                "&cuml cuml>=24.04,<24.06,>=0.0.0a0",
+                id="anchor-definition-development-no-suffix",
+            ),
+            pytest.param(
+                "cuml",
+                Anchor(AnchorType.REFERENCE, "cuml"),
+                "&cuml cuml>=24.04,<24.06",
+                "development",
+                False,
+                None,
+                id="anchor-reference-development-no-suffix",
+            ),
+            pytest.param(
+                "cuml",
+                Anchor(AnchorType.DEFINITION, "cuml"),
+                "&cuml cuml>=24.04,<24.06,>=0.0.0a0",
+                "release",
+                False,
+                "&cuml cuml>=24.04,<24.06",
+                id="anchor-definition-release-suffix",
+            ),
+            pytest.param(
+                "cuml",
+                Anchor(AnchorType.REFERENCE, "cuml"),
+                "&cuml cuml>=24.04,<24.06,>=0.0.0a0",
+                "release",
+                False,
+                None,
+                id="anchor-reference-release-suffix",
+            ),
+            pytest.param(
+                "cuml",
+                None,
+                "cuml>=24.04,<24.06",
+                "development",
+                True,
+                None,
+                id="packages-is-anchor-reference",
+            ),
+            pytest.param(
+                "packaging",
+                None,
+                "packaging",
+                "development",
+                False,
+                None,
+                id="non-rapids-package",
+            ),
+            pytest.param(
+                None,
+                None,
+                "--extra-index-url=https://pypi.nvidia.com",
+                "development",
+                False,
+                None,
+                id="extra-index-url-development",
+            ),
+            pytest.param(
+                None,
+                None,
+                "--extra-index-url=https://pypi.nvidia.com",
+                "release",
+                False,
+                None,
+                id="extra-index-url-release",
+            ),
+            pytest.param(
+                None,
+                None,
+                "gcc_linux-64=11.*",
+                "development",
+                False,
+                None,
+                id="conda-package-development",
+            ),
+            pytest.param(
+                None,
+                None,
+                "gcc_linux-64=11.*",
+                "release",
+                False,
+                None,
+                id="conda-package-release",
+            ),
+        ],
+    )
+    @patch(
+        "rapids_pre_commit_hooks.alpha_spec.get_rapids_version",
+        Mock(return_value=latest_metadata),
+    )
+    def test_handle_package(
+        self,
+        package,
+        anchor,
+        content,
+        mode,
+        packages_is_reference_anchor,
+        replacement,
+    ):
+        args = Mock(mode=mode)
+        linter = lint.Linter("dependencies.yaml", content, "verify-alpha-spec")
+        loader = AnchorPreservingLoader(content)
+        try:
+            composed = loader.get_single_node()
+        finally:
+            loader.dispose()
+        handler = alpha_spec.AlphaSpecHandler(linter, args)
+        handler.handle_package(
+            Mock(packages_is_reference_anchor=packages_is_reference_anchor),
+            anchor,
+            composed,
+        )
+        if replacement is None:
+            assert linter.warnings == []
+        else:
+            expected_linter = lint.Linter(
+                "dependencies.yaml", content, "verify-alpha-spec"
             )
-        ),
-        (
-            "cuml",
-            None,
-            "cuml>=24.04,<24.06",
-            "development",
-            "cuml>=24.04,<24.06,>=0.0.0a0",
-        ),
-        (
-            "cuml",
-            None,
-            "cuml>=24.04,<24.06,>=0.0.0a0",
-            "release",
-            "cuml>=24.04,<24.06",
-        ),
-        (
-            "cuml",
-            "cuml",
-            "&cuml cuml>=24.04,<24.06,>=0.0.0a0",
-            "release",
-            "&cuml cuml>=24.04,<24.06",
-        ),
-        ("packaging", None, "packaging", "development", None),
-        (
-            None,
-            None,
-            "--extra-index-url=https://pypi.nvidia.com",
-            "development",
-            None,
-        ),
-        (
-            None,
-            None,
-            "--extra-index-url=https://pypi.nvidia.com",
-            "release",
-            None,
-        ),
-        (None, None, "gcc_linux-64=11.*", "development", None),
-        (None, None, "gcc_linux-64=11.*", "release", None),
-    ],
-)
-@patch(
-    "rapids_pre_commit_hooks.alpha_spec.get_rapids_version",
-    Mock(return_value=latest_metadata),
-)
-def test_check_package_spec(package, anchor, content, mode, replacement):
-    args = Mock(mode=mode)
-    linter = lint.Linter("dependencies.yaml", content, "verify-alpha-spec")
-    loader = AnchorPreservingLoader(content)
-    try:
-        composed = loader.get_single_node()
-    finally:
-        loader.dispose()
-    handler = alpha_spec.AlphaSpecHandler(linter, args)
-    handler.handle_package(Mock(), anchor, composed)
-    if replacement is None:
-        assert linter.warnings == []
-    else:
-        expected_linter = lint.Linter(
-            "dependencies.yaml", content, "verify-alpha-spec"
-        )
-        expected_linter.add_warning(
-            (composed.start_mark.index, composed.end_mark.index),
-            f"{'add' if mode == 'development' else 'remove'} "
-            f"alpha spec for RAPIDS package {package}",
-        ).add_replacement(
-            (composed.start_mark.index, composed.end_mark.index), replacement
-        )
-        assert linter.warnings == expected_linter.warnings
+            expected_linter.add_warning(
+                (composed.start_mark.index, composed.end_mark.index),
+                f"{'add' if mode == 'development' else 'remove'} "
+                f"alpha spec for RAPIDS package {package}",
+            ).add_replacement(
+                (composed.start_mark.index, composed.end_mark.index),
+                replacement,
+            )
+            assert linter.warnings == expected_linter.warnings
 
 
 def test_check_alpha_spec():
@@ -283,9 +471,12 @@ def test_check_alpha_spec_integration(tmp_path):
         +   test:
         +     common:
         +       - output_types: pyproject
-        +         packages:
-        +           - cudf>=24.04,<24.06
-        :             ~~~~~~~~~~~~~~~~~~package
+        +         packages: &packages
+        +           - &cudf cudf>=24.04,<24.06
+        :             ~~~~~~~~~~~~~~~~~~~~~~~~package
+        +           - *cudf
+        +       - output_types: requirements
+        +         packages: *packages
         """
     )
 
@@ -303,5 +494,5 @@ def test_check_alpha_spec_integration(tmp_path):
     )
     expected_linter.add_warning(
         spans["package"], "add alpha spec for RAPIDS package cudf"
-    ).add_replacement(spans["package"], "cudf>=24.04,<24.06,>=0.0.0a0")
+    ).add_replacement(spans["package"], "&cudf cudf>=24.04,<24.06,>=0.0.0a0")
     assert linter.warnings == expected_linter.warnings

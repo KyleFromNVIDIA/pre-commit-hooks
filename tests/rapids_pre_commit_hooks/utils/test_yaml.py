@@ -6,8 +6,11 @@ from unittest.mock import Mock
 import pytest
 
 from rapids_pre_commit_hooks.utils.yaml import (
+    Anchor,
     AnchorPreservingLoader,
+    AnchorType,
     check_and_mark_anchor,
+    is_reference_anchor,
 )
 
 
@@ -24,7 +27,6 @@ def test_anchor_preserving_loader():
     [
         "used_anchors_before",
         "node_index",
-        "descend",
         "anchor",
         "used_anchors_after",
     ],
@@ -32,36 +34,31 @@ def test_anchor_preserving_loader():
         (
             set(),
             0,
-            True,
-            "anchor1",
+            Anchor(AnchorType.DEFINITION, "anchor1"),
             {"anchor1"},
         ),
         (
             {"anchor1"},
             1,
-            True,
-            "anchor2",
+            Anchor(AnchorType.DEFINITION, "anchor2"),
             {"anchor1", "anchor2"},
         ),
         (
             set(),
             2,
-            True,
             None,
             set(),
         ),
         (
             {"anchor1", "anchor2"},
             0,
-            False,
-            "anchor1",
+            Anchor(AnchorType.REFERENCE, "anchor1"),
             {"anchor1", "anchor2"},
         ),
         (
             {"anchor1", "anchor2"},
             1,
-            False,
-            "anchor2",
+            Anchor(AnchorType.REFERENCE, "anchor2"),
             {"anchor1", "anchor2"},
         ),
     ],
@@ -69,7 +66,6 @@ def test_anchor_preserving_loader():
 def test_check_and_mark_anchor(
     used_anchors_before,
     node_index,
-    descend,
     anchor,
     used_anchors_after,
 ):
@@ -79,9 +75,32 @@ def test_check_and_mark_anchor(
         "anchor2": NODES[1],
     }
     used_anchors = set(used_anchors_before)
-    actual_descend, actual_anchor = check_and_mark_anchor(
+    actual_anchor = check_and_mark_anchor(
         ANCHORS, used_anchors, NODES[node_index]
     )
-    assert actual_descend == descend
     assert actual_anchor == anchor
     assert used_anchors == used_anchors_after
+
+
+@pytest.mark.parametrize(
+    ["anchor", "is_ref"],
+    [
+        pytest.param(
+            None,
+            False,
+            id="none",
+        ),
+        pytest.param(
+            Anchor(AnchorType.DEFINITION, "anchor"),
+            False,
+            id="definition",
+        ),
+        pytest.param(
+            Anchor(AnchorType.REFERENCE, "anchor"),
+            True,
+            id="reference",
+        ),
+    ],
+)
+def test_is_reference_anchor(anchor, is_ref):
+    assert is_reference_anchor(anchor) == is_ref

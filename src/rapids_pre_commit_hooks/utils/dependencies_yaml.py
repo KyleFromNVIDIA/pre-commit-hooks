@@ -6,7 +6,12 @@ from typing import Any, Optional, TYPE_CHECKING
 
 import yaml
 
-from .yaml import AnchorPreservingLoader, check_and_mark_anchor, node_has_type
+from .yaml import (
+    Anchor,
+    AnchorPreservingLoader,
+    check_and_mark_anchor,
+    node_has_type,
+)
 
 if TYPE_CHECKING:
     from collections.abc import Generator, Iterable
@@ -114,6 +119,7 @@ class Handler:
     def handle_packages(
         self,
         common_or_matrices_item_context: "Any",
+        anchor: "Optional[Anchor]",  # noqa: ARG002
         key: "yaml.Node",  # noqa: ARG002
         value: "yaml.Node",  # noqa: ARG002
     ) -> "contextlib.AbstractContextManager[Any]":
@@ -122,7 +128,7 @@ class Handler:
     def handle_package(
         self,
         packages_context: "Any",  # noqa: ARG002
-        anchor: "Optional[str]",  # noqa: ARG002
+        anchor: "Optional[Anchor]",  # noqa: ARG002
         item: "yaml.Node",  # noqa: ARG002
     ) -> None:
         pass
@@ -299,9 +305,8 @@ def traverse_package(
     node: "yaml.Node",
 ) -> None:
     if node_has_type(node, "str"):
-        descend, anchor = check_and_mark_anchor(anchors, used_anchors, node)
-        if descend:
-            handler.handle_package(packages_context, anchor, node)
+        anchor = check_and_mark_anchor(anchors, used_anchors, node)
+        handler.handle_package(packages_context, anchor, node)
 
 
 def traverse_packages(
@@ -313,19 +318,18 @@ def traverse_packages(
     node: "yaml.Node",
 ) -> None:
     if node_has_type(node, "seq"):
-        descend, _ = check_and_mark_anchor(anchors, used_anchors, node)
-        if descend:
-            with handler.handle_packages(
-                common_or_matrices_item_context, key_node, node
-            ) as packages_context:
-                for package in node.value:
-                    traverse_package(
-                        handler,
-                        packages_context,
-                        anchors,
-                        used_anchors,
-                        package,
-                    )
+        anchor = check_and_mark_anchor(anchors, used_anchors, node)
+        with handler.handle_packages(
+            common_or_matrices_item_context, anchor, key_node, node
+        ) as packages_context:
+            for package in node.value:
+                traverse_package(
+                    handler,
+                    packages_context,
+                    anchors,
+                    used_anchors,
+                    package,
+                )
 
 
 def traverse_output_type(
