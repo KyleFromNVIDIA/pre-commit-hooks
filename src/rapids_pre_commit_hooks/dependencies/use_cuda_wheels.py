@@ -1,18 +1,19 @@
 # SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-import argparse
 import contextlib
 import re
 from dataclasses import dataclass, field
 from typing import Any, Optional, TYPE_CHECKING
 
 from packaging.requirements import InvalidRequirement, Requirement
+
 from rapids_pre_commit_hooks.utils.dependencies_yaml import (
     Handler,
 )
 
 if TYPE_CHECKING:
+    import argparse
     from collections.abc import Generator
 
     import yaml
@@ -78,7 +79,7 @@ class UseCUDAWheelsHandler(Handler):
             default_factory=list
         )
 
-    def __init__(self, linter: "Linter", args: argparse.Namespace):
+    def __init__(self, linter: "Linter", args: "argparse.Namespace"):
         self.linter = linter
         self.args = args
 

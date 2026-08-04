@@ -6,7 +6,7 @@ from unittest.mock import Mock
 import pytest
 from packaging.requirements import Requirement
 
-from rapids_pre_commit_hooks import lint, dependencies
+from rapids_pre_commit_hooks import lint
 from rapids_pre_commit_hooks.dependencies.use_cuda_wheels import (
     UseCUDAWheelsHandler,
     is_cupy_ctk_package,
@@ -115,7 +115,7 @@ class TestUseCUDAWheelsHandler:
 
         args = Mock()
         linter = lint.Linter(
-            "dependencies.yaml", content, "verify-use-cuda-wheels"
+            "dependencies.yaml", content, "verify-dependencies"
         )
         loader = dependencies_yaml.AnchorPreservingLoader(content)
         try:
@@ -286,7 +286,7 @@ class TestUseCUDAWheelsHandler:
 
         args = Mock()
         linter = lint.Linter(
-            "dependencies.yaml", content, "verify-use-cuda-wheels"
+            "dependencies.yaml", content, "verify-dependencies"
         )
         loader = dependencies_yaml.AnchorPreservingLoader(content)
         try:
@@ -350,7 +350,7 @@ class TestUseCUDAWheelsHandler:
 
         args = Mock()
         linter = lint.Linter(
-            "dependencies.yaml", content, "verify-use-cuda-wheels"
+            "dependencies.yaml", content, "verify-dependencies"
         )
         loader = dependencies_yaml.AnchorPreservingLoader(content)
         try:
@@ -403,7 +403,7 @@ class TestUseCUDAWheelsHandler:
 
         args = Mock()
         linter = lint.Linter(
-            "dependencies.yaml", content, "verify-use-cuda-wheels"
+            "dependencies.yaml", content, "verify-dependencies"
         )
         loader = dependencies_yaml.AnchorPreservingLoader(content)
         try:
@@ -461,7 +461,7 @@ class TestUseCUDAWheelsHandler:
 
         args = Mock()
         linter = lint.Linter(
-            "dependencies.yaml", content, "verify-use-cuda-wheels"
+            "dependencies.yaml", content, "verify-dependencies"
         )
         loader = dependencies_yaml.AnchorPreservingLoader(content)
         try:
@@ -534,7 +534,7 @@ class TestUseCUDAWheelsHandler:
     def test_handle_package(self, content, expected_node, expected_name):
         args = Mock()
         linter = lint.Linter(
-            "dependencies.yaml", content, "verify-use-cuda-wheels"
+            "dependencies.yaml", content, "verify-dependencies"
         )
         loader = dependencies_yaml.AnchorPreservingLoader(content)
         try:
@@ -781,10 +781,15 @@ class TestUseCUDAWheelsHandler:
 def test_check_use_cuda_wheels_integration(content, warnings):
     content, spans = parse_named_spans(content, dict)
 
+    loader = dependencies_yaml.AnchorPreservingLoader(content)
+    try:
+        composed = loader.get_single_node()
+    finally:
+        loader.dispose()
+
     args = Mock()
-    linter = lint.Linter(
-        "dependencies.yaml", content, "verify-use-cuda-wheels"
-    )
+    linter = lint.Linter("dependencies.yaml", content, "verify-dependencies")
+    handler = UseCUDAWheelsHandler(linter, args)
 
     expected_warnings = [
         lint.LintWarning(
@@ -804,5 +809,5 @@ def test_check_use_cuda_wheels_integration(content, warnings):
         )
     ]
 
-    dependencies.check_dependencies(linter, args)
+    dependencies_yaml.traverse_root(handler, {}, set(), composed)
     assert linter.warnings == expected_warnings

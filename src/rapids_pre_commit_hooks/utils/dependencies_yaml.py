@@ -50,6 +50,21 @@ class Handler:
     ) -> "contextlib.AbstractContextManager[Any]":
         return contextlib.nullcontext(common_context)
 
+    def handle_output_types(
+        self,
+        common_item_or_specific_item_context: "Any",
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.AbstractContextManager[Any]":
+        return contextlib.nullcontext(common_item_or_specific_item_context)
+
+    def handle_output_type(
+        self,
+        output_types_context: "Any",
+        item: "yaml.Node",  # noqa: ARG002
+    ) -> None:
+        pass
+
     def handle_specific(
         self,
         dependency_set_context: "Any",
@@ -196,6 +211,26 @@ class ChainedHandler(Handler):
             "handle_common_item", common_context, *args, **kwargs
         )
 
+    def handle_output_types(
+        self,
+        common_item_or_specific_item_context: "tuple[Any, ...]",
+        *args,
+        **kwargs,
+    ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
+        return self._handle_context(
+            "handle_output_types",
+            common_item_or_specific_item_context,
+            *args,
+            **kwargs,
+        )
+
+    def handle_output_type(
+        self, output_types_context: "tuple[Any, ...]", *args, **kwargs
+    ) -> None:
+        return self._handle_no_context(
+            "handle_output_type", output_types_context, *args, **kwargs
+        )
+
     def handle_specific(
         self, dependency_set_context: "tuple[Any, ...]", *args, **kwargs
     ) -> "contextlib.AbstractContextManager[tuple[Any, ...]]":
@@ -293,6 +328,34 @@ def traverse_packages(
                     )
 
 
+def traverse_output_type(
+    handler: Handler,
+    output_types_context: "Any",
+    node: "yaml.Node",
+) -> None:
+    if node_has_type(node, "str"):
+        handler.handle_output_type(output_types_context, node)
+
+
+def traverse_output_types(
+    handler: Handler,
+    common_item_or_specific_item_context: "Any",
+    key_node: "yaml.Node",
+    node: "yaml.Node",
+) -> None:
+    if node_has_type(node, "seq"):
+        with handler.handle_output_types(
+            common_item_or_specific_item_context, key_node, node
+        ) as output_types_context:
+            for item in node.value:
+                traverse_output_type(handler, output_types_context, item)
+    elif node_has_type(node, "str"):
+        with handler.handle_output_types(
+            common_item_or_specific_item_context, key_node, node
+        ) as output_types_context:
+            traverse_output_type(handler, output_types_context, node)
+
+
 def traverse_common_item(
     handler: Handler,
     common_context: "Any",
@@ -309,6 +372,16 @@ def traverse_common_item(
                 common_item_value,
             ) in node.value:
                 if (
+                    node_has_type(common_item_key, "str")
+                    and common_item_key.value == "output_types"
+                ):
+                    traverse_output_types(
+                        handler,
+                        common_item_context,
+                        common_item_key,
+                        common_item_value,
+                    )
+                elif (
                     node_has_type(common_item_key, "str")
                     and common_item_key.value == "packages"
                 ):
@@ -444,6 +517,16 @@ def traverse_specific_item(
                 specific_item_value,
             ) in node.value:
                 if (
+                    node_has_type(specific_item_key, "str")
+                    and specific_item_key.value == "output_types"
+                ):
+                    traverse_output_types(
+                        handler,
+                        specific_item_context,
+                        specific_item_key,
+                        specific_item_value,
+                    )
+                elif (
                     node_has_type(specific_item_key, "str")
                     and specific_item_key.value == "matrices"
                 ):

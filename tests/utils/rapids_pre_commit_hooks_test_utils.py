@@ -7,10 +7,10 @@ from textwrap import dedent
 from typing import TYPE_CHECKING
 
 from rapids_pre_commit_hooks.utils.yaml import node_has_type
-from rapids_pre_commit_hooks.lint import Lines
+from rapids_pre_commit_hooks.lint import Lines, LintWarning, Note, Replacement
 
 if TYPE_CHECKING:
-    from typing import Optional, TypeGuard
+    from typing import Optional, TypeGuard, TypedDict
 
     import yaml
 
@@ -259,6 +259,54 @@ def parse_named_spans(
     if root_type is not None and not isinstance(postprocessed, root_type):
         raise ParseError
     return content, postprocessed
+
+
+if TYPE_CHECKING:
+
+    class ExpectedWarningSpan(TypedDict):
+        warning: "Span"
+        notes: "list[Span]"
+        replacements: "list[Span]"
+
+    class ExpectedWarning(TypedDict):
+        warning: str
+        notes: list[str]
+        replacements: list[str]
+
+
+def zip_expected_warnings(
+    warning_spans: "list[ExpectedWarningSpan]",
+    warnings: "list[ExpectedWarning]",
+) -> "list[LintWarning]":
+    return [
+        LintWarning(
+            warning_span["warning"],
+            warning["warning"],
+            notes=[
+                Note(
+                    note_span,
+                    note,
+                )
+                for note_span, note in zip(
+                    warning_span.get("notes", []),
+                    warning.get("notes", []),
+                    strict=True,
+                )
+            ],
+            replacements=[
+                Replacement(
+                    replacement_span,
+                    replacement,
+                )
+                for replacement_span, replacement in zip(
+                    warning_span.get("replacements", []),
+                    warning.get("replacements", []),
+                    strict=True,
+                )
+            ],
+        )
+        for warning_span, warning in zip(warning_spans, warnings, strict=True)
+    ]
 
 
 def find_yaml_node_for_span(
