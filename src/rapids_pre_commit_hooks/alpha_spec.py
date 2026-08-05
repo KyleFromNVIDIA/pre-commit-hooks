@@ -2,6 +2,8 @@
 # SPDX-License-Identifier: Apache-2.0
 
 import argparse
+import contextlib
+import dataclasses
 import os
 import re
 from functools import cache, total_ordering
@@ -13,6 +15,7 @@ from rapids_metadata.metadata import RAPIDSMetadata, RAPIDSVersion
 from rapids_metadata.remote import fetch_latest
 
 from .lint import Linter, LintMain
+from .utils.yaml import Anchor, is_reference_anchor
 from .utils.dependencies_yaml import Handler, traverse_dependencies_yaml
 
 ALPHA_SPECIFIER: str = ">=0.0.0a0"
@@ -48,16 +51,37 @@ def strip_cuda_suffix(args: argparse.Namespace, name: str) -> str:
 
 
 class AlphaSpecHandler(Handler):
+    @dataclasses.dataclass
+    class PackagesContext:
+        packages_is_reference_anchor: bool
+
     def __init__(self, linter: Linter, args: argparse.Namespace):
         self.linter = linter
         self.args = args
 
+    def handle_packages(
+        self,
+        common_or_matrices_item_context: "Any",  # noqa: ARG002
+        anchor: "Optional[Anchor]",  # noqa: ARG002
+        key: "yaml.Node",  # noqa: ARG002
+        value: "yaml.Node",  # noqa: ARG002
+    ) -> "contextlib.nullcontext[AlphaSpecHandler.PackagesContext]":
+        return contextlib.nullcontext(
+            AlphaSpecHandler.PackagesContext(is_reference_anchor(anchor))
+        )
+
     def handle_package(
         self,
-        packages_context: "Any",  # noqa: ARG002
-        anchor: "Optional[str]",
+        packages_context: "AlphaSpecHandler.PackagesContext",  # noqa: ARG002
+        anchor: "Optional[Anchor]",
         node: "yaml.Node",
     ) -> None:
+        if (
+            packages_context.packages_is_reference_anchor
+            or is_reference_anchor(anchor)
+        ):
+            return
+
         @total_ordering
         class SpecPriority:
             def __init__(self, spec: str):
@@ -102,7 +126,7 @@ class AlphaSpecHandler(Handler):
             ).add_replacement(
                 (node.start_mark.index, node.end_mark.index),
                 str(
-                    (f"&{anchor} " if anchor else "")
+                    (f"&{anchor.anchor_name} " if anchor else "")
                     + req.name
                     + create_specifier_string(
                         {str(s) for s in req.specifier} | {ALPHA_SPECIFIER},
@@ -116,7 +140,7 @@ class AlphaSpecHandler(Handler):
             ).add_replacement(
                 (node.start_mark.index, node.end_mark.index),
                 str(
-                    (f"&{anchor} " if anchor else "")
+                    (f"&{anchor.anchor_name} " if anchor else "")
                     + req.name
                     + create_specifier_string(
                         {str(s) for s in req.specifier} - {ALPHA_SPECIFIER},

@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, Mock, call, patch
 import pytest
 import yaml
 
+from rapids_pre_commit_hooks.utils.yaml import Anchor, AnchorType
 from rapids_pre_commit_hooks.utils import dependencies_yaml
 from rapids_pre_commit_hooks_test_utils import (
     find_yaml_node_for_span,
@@ -86,7 +87,7 @@ class TestChainedHandler:
             pytest.param(
                 "handle_packages",
                 True,
-                (Mock(), Mock()),
+                (Mock(), Mock(), Mock()),
                 id="handle_packages",
             ),
         ],
@@ -147,7 +148,7 @@ class TestChainedHandler:
             ),
             pytest.param(
                 "handle_package",
-                ("anchor", Mock()),
+                (Mock(), Mock()),
                 id="handle_package",
             ),
             pytest.param(
@@ -177,136 +178,147 @@ class TestChainedHandler:
         assert manager.mock_calls == expected_calls
 
 
-def test_traverse_package():
-    packages = yaml.SafeLoader("""\
-    - lib1
-    """).get_single_node()
-    package = packages.value[0]
+@pytest.mark.parametrize(
+    ["content", "used_anchors", "anchor"],
+    [
+        pytest.param(
+            """\
+            + - lib1
+            :   ~~~~node
+            """,
+            set(),
+            None,
+            id="no-anchor",
+        ),
+        pytest.param(
+            """\
+            + - &lib1 lib1
+            :   ~~~~~~~~~~node
+            :   ~~~~~~~~~~anchors.lib1
+            + - *lib1
+            """,
+            set(),
+            Anchor(AnchorType.DEFINITION, "lib1"),
+            id="anchor-definition",
+        ),
+        pytest.param(
+            """\
+            + - &lib1 lib1
+            :   ~~~~~~~~~~node
+            :   ~~~~~~~~~~anchors.lib1
+            + - *lib1
+            """,
+            {"lib1"},
+            Anchor(AnchorType.REFERENCE, "lib1"),
+            id="anchor-reference",
+        ),
+    ],
+)
+def test_traverse_package(content, used_anchors, anchor):
+    content, spans = parse_named_spans(content)
+    composed = yaml.SafeLoader(content).get_single_node()
+    package = find_yaml_node_for_span(composed, spans["node"])
     packages_context = Mock()
     manager = MagicMock()
 
     expected_calls = [
-        call.handler.handle_package(packages_context, None, package),
+        call.handler.handle_package(packages_context, anchor, package),
     ]
     manager.reset_mock()
 
+    anchors = {
+        name: find_yaml_node_for_span(composed, span)
+        for name, span in spans.get("anchors", {}).items()
+    }
     dependencies_yaml.traverse_package(
-        manager.handler, packages_context, {}, set(), package
+        manager.handler, packages_context, anchors, used_anchors, package
     )
 
     assert manager.mock_calls == expected_calls
 
 
-def test_traverse_package_anchor():
-    packages = yaml.SafeLoader("""\
-    - &lib1 lib1
-    - *lib1
-    """).get_single_node()
-    package = packages.value[0]
-    packages_context = Mock()
-    manager = MagicMock()
-
-    expected_calls = [
-        call.handler.handle_package(packages_context, "lib1", package),
-    ]
-    manager.reset_mock()
-
-    dependencies_yaml.traverse_package(
-        manager.handler, packages_context, {"lib1": package}, set(), package
-    )
-
-    assert manager.mock_calls == expected_calls
-
-
-def test_traverse_package_used_anchor():
-    packages = yaml.SafeLoader("""\
-    - &lib1 lib1
-    - *lib1
-    """).get_single_node()
-    package = packages.value[1]
-    packages_context = Mock()
-    manager = MagicMock()
-
-    expected_calls = []
-    manager.reset_mock()
-
-    dependencies_yaml.traverse_package(
-        manager.handler, packages_context, {"lib1": package}, {"lib1"}, package
-    )
-
-    assert manager.mock_calls == expected_calls
-
-
-def test_traverse_packages():
-    item = yaml.SafeLoader("""\
-    packages:
-        - lib1
-        - lib2
-    """).get_single_node()
-    packages_key, packages = item.value[0]
+@pytest.mark.parametrize(
+    ["content", "used_anchors", "used_anchors_after", "anchor"],
+    [
+        pytest.param(
+            """\
+            + packages:
+            : ~~~~~~~~packages_key
+            +     - lib1
+            :     >packages
+            +     - lib2
+            :            !packages
+            """,
+            set(),
+            set(),
+            None,
+            id="no-anchor",
+        ),
+        pytest.param(
+            """\
+            + - packages: &packages
+            :   ~~~~~~~~packages_key
+            :             >packages
+            :             >anchors.packages
+            +     - lib1
+            +     - lib2
+            :            !packages
+            :            !anchors.packages
+            + - packages: *packages
+            """,
+            set(),
+            {"packages"},
+            Anchor(AnchorType.DEFINITION, "packages"),
+            id="anchor-definition",
+        ),
+        pytest.param(
+            """\
+            + - packages: &packages
+            :             >packages
+            :             >anchors.packages
+            +     - lib1
+            +     - lib2
+            :            !packages
+            :            !anchors.packages
+            + - packages: *packages
+            :   ~~~~~~~~packages_key
+            """,
+            {"packages"},
+            {"packages"},
+            Anchor(AnchorType.REFERENCE, "packages"),
+            id="anchor-reference",
+        ),
+    ],
+)
+def test_traverse_packages(content, used_anchors, used_anchors_after, anchor):
+    content, spans = parse_named_spans(content)
+    composed = yaml.SafeLoader(content).get_single_node()
+    packages_key = find_yaml_node_for_span(composed, spans["packages_key"])
+    packages = find_yaml_node_for_span(composed, spans["packages"])
     item_context = Mock()
     manager = MagicMock()
 
+    anchors = {
+        name: find_yaml_node_for_span(composed, span)
+        for name, span in spans.get("anchors", {}).items()
+    }
     expected_calls = [
-        call.handler.handle_packages(item_context, packages_key, packages),
+        call.handler.handle_packages(
+            item_context, anchor, packages_key, packages
+        ),
         call.handler.handle_packages().__enter__(),
         call.traverse_package(
             manager.handler,
             manager.handler.handle_packages().__enter__(),
-            {},
-            set(),
+            anchors,
+            used_anchors_after,
             packages.value[0],
         ),
         call.traverse_package(
             manager.handler,
             manager.handler.handle_packages().__enter__(),
-            {},
-            set(),
-            packages.value[1],
-        ),
-        call.handler.handle_packages().__exit__(None, None, None),
-    ]
-    manager.reset_mock()
-
-    with (
-        patch(
-            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_package",
-            manager.traverse_package,
-        ),
-    ):
-        dependencies_yaml.traverse_packages(
-            manager.handler, item_context, {}, set(), packages_key, packages
-        )
-
-    assert manager.mock_calls == expected_calls
-
-
-def test_traverse_packages_anchor():
-    items = yaml.SafeLoader("""\
-    - packages: &packages
-        - lib1
-        - lib2
-    - packages: *packages
-    """).get_single_node()
-    packages_key, packages = items.value[0].value[0]
-    item_context = Mock()
-    manager = MagicMock()
-
-    expected_calls = [
-        call.handler.handle_packages(item_context, packages_key, packages),
-        call.handler.handle_packages().__enter__(),
-        call.traverse_package(
-            manager.handler,
-            manager.handler.handle_packages().__enter__(),
-            {"packages": items.value[0].value[0][1]},
-            {"packages"},
-            packages.value[0],
-        ),
-        call.traverse_package(
-            manager.handler,
-            manager.handler.handle_packages().__enter__(),
-            {"packages": items.value[0].value[0][1]},
-            {"packages"},
+            anchors,
+            used_anchors_after,
             packages.value[1],
         ),
         call.handler.handle_packages().__exit__(None, None, None),
@@ -322,40 +334,8 @@ def test_traverse_packages_anchor():
         dependencies_yaml.traverse_packages(
             manager.handler,
             item_context,
-            {"packages": items.value[0].value[0][1]},
-            set(),
-            packages_key,
-            packages,
-        )
-
-    assert manager.mock_calls == expected_calls
-
-
-def test_traverse_packages_used_anchor():
-    items = yaml.SafeLoader("""\
-    - packages: &packages
-        - lib1
-        - lib2
-    - packages: *packages
-    """).get_single_node()
-    packages_key, packages = items.value[1].value[0]
-    item_context = Mock()
-    manager = MagicMock()
-
-    expected_calls = []
-    manager.reset_mock()
-
-    with (
-        patch(
-            "rapids_pre_commit_hooks.utils.dependencies_yaml.traverse_package",
-            manager.traverse_package,
-        ),
-    ):
-        dependencies_yaml.traverse_packages(
-            manager.handler,
-            item_context,
-            {"packages": items.value[0].value[0][1]},
-            {"packages"},
+            anchors,
+            used_anchors,
             packages_key,
             packages,
         )

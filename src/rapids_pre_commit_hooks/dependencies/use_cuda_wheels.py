@@ -8,9 +8,10 @@ from typing import Any, Optional, TYPE_CHECKING
 
 from packaging.requirements import InvalidRequirement, Requirement
 
-from rapids_pre_commit_hooks.utils.dependencies_yaml import (
+from ..utils.dependencies_yaml import (
     Handler,
 )
+from ..utils.yaml import Anchor, is_reference_anchor
 
 if TYPE_CHECKING:
     import argparse
@@ -18,7 +19,7 @@ if TYPE_CHECKING:
 
     import yaml
 
-    from rapids_pre_commit_hooks.lint import Linter
+    from ..lint import Linter
 
 
 def is_nvidia_library_package(req: "Requirement") -> bool:
@@ -72,12 +73,17 @@ def is_cupy_ctk_package(req: "Requirement") -> bool:
 
 class UseCUDAWheelsHandler(Handler):
     @dataclass
-    class Context:
+    class CommonOrMatricesItemContext:
         has_use_cuda_wheels: bool = False
         use_cuda_wheels_node: "Optional[yaml.Node]" = None
         suspicious_packages: "list[tuple[yaml.Node, str]]" = field(
             default_factory=list
         )
+
+    @dataclass
+    class PackagesContext:
+        parent_context: "UseCUDAWheelsHandler.CommonOrMatricesItemContext"
+        packages_is_reference_anchor: bool
 
     def __init__(self, linter: "Linter", args: "argparse.Namespace"):
         self.linter = linter
@@ -89,8 +95,8 @@ class UseCUDAWheelsHandler(Handler):
         dependency_set_context: "Any",  # noqa: ARG002
         key: "yaml.Node",
         value: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[UseCUDAWheelsHandler.Context]":
-        context = UseCUDAWheelsHandler.Context()
+    ) -> "Generator[UseCUDAWheelsHandler.CommonOrMatricesItemContext]":
+        context = UseCUDAWheelsHandler.CommonOrMatricesItemContext()
         yield context
 
         for node, name in context.suspicious_packages:
@@ -109,8 +115,8 @@ class UseCUDAWheelsHandler(Handler):
         self,
         matrices_context: "Any",  # noqa: ARG002
         item: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[UseCUDAWheelsHandler.Context]":
-        context = UseCUDAWheelsHandler.Context()
+    ) -> "Generator[UseCUDAWheelsHandler.CommonOrMatricesItemContext]":
+        context = UseCUDAWheelsHandler.CommonOrMatricesItemContext()
         yield context
 
         if not context.has_use_cuda_wheels:
@@ -130,19 +136,18 @@ class UseCUDAWheelsHandler(Handler):
                         'use_cuda_wheels: "true" instead',
                     )
 
-    @contextlib.contextmanager
     def handle_matrix(
         self,
-        matrices_item_context: "UseCUDAWheelsHandler.Context",
+        matrices_item_context: "UseCUDAWheelsHandler.CommonOrMatricesItemContext",  # noqa: E501
         key: "yaml.Node",
         value: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[UseCUDAWheelsHandler.Context]":
+    ) -> "contextlib.nullcontext[UseCUDAWheelsHandler.CommonOrMatricesItemContext]":  # noqa: E501
         matrices_item_context.use_cuda_wheels_node = key
-        yield matrices_item_context
+        return contextlib.nullcontext(matrices_item_context)
 
     def handle_matrix_item(
         self,
-        matrix_context: "UseCUDAWheelsHandler.Context",
+        matrix_context: "UseCUDAWheelsHandler.CommonOrMatricesItemContext",
         key: "yaml.Node",
         value: "yaml.Node",
     ) -> None:
@@ -151,30 +156,41 @@ class UseCUDAWheelsHandler(Handler):
             if value.value == "true":
                 matrix_context.has_use_cuda_wheels = True
 
-    @contextlib.contextmanager
     def handle_packages(
         self,
-        common_or_matrices_item_context: "UseCUDAWheelsHandler.Context",
+        common_or_matrices_item_context: "UseCUDAWheelsHandler.CommonOrMatricesItemContext",  # noqa: E501
+        anchor: "Optional[Anchor]",
         key: "yaml.Node",
         value: "yaml.Node",  # noqa: ARG002
-    ) -> "Generator[UseCUDAWheelsHandler.Context]":
+    ) -> "contextlib.nullcontext[UseCUDAWheelsHandler.PackagesContext]":
         if common_or_matrices_item_context.use_cuda_wheels_node is None:
             common_or_matrices_item_context.use_cuda_wheels_node = key
-        yield common_or_matrices_item_context
+        context = UseCUDAWheelsHandler.PackagesContext(
+            common_or_matrices_item_context, is_reference_anchor(anchor)
+        )
+        return contextlib.nullcontext(context)
 
     def handle_package(
         self,
-        packages_context: "UseCUDAWheelsHandler.Context",
-        anchor: "Optional[str]",  # noqa: ARG002
+        packages_context: "UseCUDAWheelsHandler.PackagesContext",
+        anchor: "Optional[Anchor]",
         item: "yaml.Node",
     ) -> None:
+        if (
+            packages_context.packages_is_reference_anchor
+            or is_reference_anchor(anchor)
+        ):
+            return
+
         try:
             req = Requirement(item.value)
         except InvalidRequirement:
             return
         if is_nvidia_library_package(req):
-            packages_context.suspicious_packages.append((item, req.name))
+            packages_context.parent_context.suspicious_packages.append(
+                (item, req.name)
+            )
         elif is_cupy_ctk_package(req):
-            packages_context.suspicious_packages.append(
+            packages_context.parent_context.suspicious_packages.append(
                 (item, f"{req.name}[ctk]")
             )
