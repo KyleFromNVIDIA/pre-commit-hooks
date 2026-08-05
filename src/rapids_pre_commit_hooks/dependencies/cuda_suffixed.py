@@ -94,7 +94,7 @@ class CUDASuffixedHandler(Handler):
         ),
         item: "yaml.Node",
     ) -> None:
-        if item.value in {"requirements", "pyproject"}:
+        if item.value in {"requirements", "constraints", "pyproject"}:
             output_types_context.has_python_output_type = True
 
     @contextlib.contextmanager
