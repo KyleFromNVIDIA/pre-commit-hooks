@@ -2,7 +2,7 @@
 # SPDX-License-Identifier: Apache-2.0
 
 reviews:
-  profile: assertive
+  profile: chill
   high_level_summary: true
   high_level_summary_in_walkthrough: true
   poem: false
