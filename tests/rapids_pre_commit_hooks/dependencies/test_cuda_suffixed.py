@@ -32,6 +32,7 @@ class TestCUDASuffixedHandler:
         ["output_type", "expected"],
         [
             pytest.param("requirements", True, id="requirements"),
+            pytest.param("constraints", True, id="constraints"),
             pytest.param("pyproject", True, id="pyproject"),
             pytest.param("conda", False, id="conda"),
         ],
