@@ -1,0 +1,101 @@
+# SPDX-FileCopyrightText: Copyright (c) 2026, NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+reviews:
+  profile: assertive
+  high_level_summary: true
+  high_level_summary_in_walkthrough: true
+  poem: false
+  auto_review:
+    enabled: true
+    drafts: false
+    base_branches:
+      - "^main$"
+    ignore_usernames: ["rapids-bot", "GPUtester", "nv-automation-bot", "copy-pr-bot"]
+  tools:
+    gitleaks:
+      enabled: true
+    markdownlint:
+      enabled: true
+    shellcheck:
+      enabled: true
+  sequence_diagrams: false
+  collapse_walkthrough: true
+
+  # Reduce noise from status messages
+  request_changes_workflow: false
+  review_status: false
+
+  # Path-specific review instructions
+  path_instructions:
+    - path: "src/rapids_pre_commit_hooks/**"
+      instructions: |
+        These Python modules are linters that enforce various code and
+        configuration conventions specific to RAPIDS projects. These linters
+        should never modify any files directly. Instead, they should use
+        `rapids_pre_commit_hooks.lint.LintMain` to do the work of processing
+        lists of files. Each file will have a corresponding
+        `rapids_pre_commit_hooks.lint.Linter` instance, to which the linters
+        can add warnings, notes, and replacements. Warnings prevent changes
+        from being merged into the project, and replacements are automatically
+        applied. Therefore, warnings should only be issued for genuinely
+        incorrect code, and replacements should only be issued if there is no
+        ambiguity about what the correct fix is.
+
+    - path: "src/rapids_pre_commit_hooks/dependencies/**"
+      instructions: |
+        These modules are part of the `verify-dependencies` check. Each module
+        has a `rapids_pre_commit_hooks.utils.dependencies_yaml.Handler` class,
+        which handles the recursive descent into a `dependencies.yaml` file.
+        A JSON schema for `dependencies.yaml` can be found at
+        https://github.com/rapidsai/dependency-file-generator/blob/main/src/rapids_dependency_file_generator/schema.json.
+        The handler should be registered in
+        `rapids_pre_commit_hooks.dependencies.check_dependencies()`. Because
+        `verify-dependencies` has multiple handlers, these handlers should take
+        care to not issue replacements that might overlap with each other.
+
+    - path: "tests/rapids_pre_commit_hooks/**"
+      instructions: |
+        These are unit tests and integration tests for the linters in the
+        `rapids_pre_commit_hooks` module. They should thoroughly test all the
+        functionality of their corresponding hook, ensuring that the warnings,
+        notes, and replacements all have the expected spans, messages, and
+        replacement text. These tests should never hard-code the spans, but
+        should instead use
+        `rapids_pre_commit_hooks_test_utils.parse_named_spans()`, which
+        provides a DSL for easily extracting spans from a string. A full
+        description of this DSL can be found in the docstring for
+        `parse_named_spans()`. Tests for YAML-based hooks should generally use
+        `rapids_pre_commit_hooks_test_utils.find_yaml_node_for_span()` rather
+        than hard-coding a path to the desired YAML node, though some very
+        small and trivial tests may use the nodes directly.
+
+    - path: "tests/examples/**"
+      instructions: |
+        These are simple smoke tests that only ensure that each hook is
+        packaged correctly by actually running `pre-commit` with the hook.
+        They are not meant to thoroughly test the functionality of the hook.
+        For each hook in `.pre-commit-hooks.yaml`, there must be a subdirectory
+        in this directory with the same name containing a `pass` subdirectory
+        and a `fail` subdirectory. Details of how these tests should be laid
+        out can be found in the implementation of `tests/test_pre_commit.py`.
+
+    - path: "tests/utils/rapids_pre_commit_hooks_test_utils.py"
+      instructions: |
+        This file contains common functionality for the hook tests. Functions
+        that are used by multiple tests across multiple files should be placed
+        here. In particular, this is where `parse_named_spans()` is located,
+        which is critical for tests to show where warnings, notes, and
+        replacements should be placed. `parse_named_spans()` specifies a DSL
+        for specifying these spans.
+
+    - path: "tests/test_testing_utils.py"
+      instructions: |
+        This file is meant to test the functionality of
+        `rapids_pre_commit_hooks_testing_utils`, such as `parse_named_spans()`.
+        Because it is testing the functionality of the testing infrastructure
+        itself, this is the only place where it is acceptable to hard-code the
+        values of spans.
+
+knowledge_base:
+  opt_out: false
