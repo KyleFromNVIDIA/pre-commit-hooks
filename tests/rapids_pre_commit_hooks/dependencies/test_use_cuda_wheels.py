@@ -601,8 +601,8 @@ class TestUseCUDAWheelsHandler:
                 "cuda-toolkit==13.0",
                 Anchor(AnchorType.REFERENCE, "cuda_toolkit"),
                 False,
-                False,
-                None,
+                True,
+                "cuda-toolkit",
                 id="anchor-reference",
             ),
         ],
@@ -862,6 +862,99 @@ class TestUseCUDAWheelsHandler:
             ],
             id="specific-no-matrix",
         ),
+        pytest.param(
+            """\
+            + dependencies:
+            +   file_set:
+            +     common:
+            :     ~~~~~~warnings.0.notes.0
+            :     ~~~~~~warnings.1.notes.0
+            :     ~~~~~~warnings.2.notes.0
+            :     ~~~~~~warnings.3.notes.0
+            +       - output_types: pyproject
+            +         packages:
+            +           - &cuda_toolkit cuda-toolkit==13.0
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.2.warning
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.4.warning
+            +           - &cupy_ctk cupy-cuda13x[ctk]
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.1.warning
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.3.warning
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.5.warning
+            +       - output_types: pyproject
+            +         packages:
+            +           - *cuda_toolkit
+            +           - *cupy_ctk
+            +     specific:
+            +       - output_types: pyproject
+            +         matrices:
+            +           - matrix:
+            +               use_cuda_wheels: "true"
+            +             packages:
+            +               - *cuda_toolkit
+            +               - *cupy_ctk
+            +           - matrix:
+            +               use_cuda_wheels: "false"
+            :                                ~~~~~~~warnings.4.notes.0
+            :                                ~~~~~~~warnings.5.notes.0
+            +             packages:
+            +               - *cuda_toolkit
+            +               - *cupy_ctk
+            """,
+            [
+                {
+                    "warning": 'package "cuda-toolkit" in common '
+                    "dependency set",
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'use_cuda_wheels: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "cupy-cuda13x[ctk]" in common '
+                    "dependency set",
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'use_cuda_wheels: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "cuda-toolkit" in common '
+                    "dependency set",
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'use_cuda_wheels: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "cupy-cuda13x[ctk]" in common '
+                    "dependency set",
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'use_cuda_wheels: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "cuda-toolkit" in specific '
+                    "dependency set without "
+                    'use_cuda_wheels: "true"',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'use_cuda_wheels: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "cupy-cuda13x[ctk]" in specific '
+                    "dependency set without "
+                    'use_cuda_wheels: "true"',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'use_cuda_wheels: "true" instead',
+                    ],
+                },
+            ],
+            id="anchors",
+        ),
     ],
 )
 def test_check_use_cuda_wheels_integration(content, warnings):
@@ -895,5 +988,7 @@ def test_check_use_cuda_wheels_integration(content, warnings):
         )
     ]
 
-    dependencies_yaml.traverse_root(handler, {}, set(), composed)
+    dependencies_yaml.traverse_root(
+        handler, loader.document_anchors[0], set(), composed
+    )
     assert linter.warnings == expected_warnings

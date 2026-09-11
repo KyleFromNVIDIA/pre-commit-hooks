@@ -173,13 +173,10 @@ class UseCUDAWheelsHandler(Handler):
     def handle_package(
         self,
         packages_context: "UseCUDAWheelsHandler.PackagesContext",
-        anchor: "Optional[Anchor]",
+        anchor: "Optional[Anchor]",  # noqa: ARG002
         item: "yaml.Node",
     ) -> None:
-        if (
-            packages_context.packages_is_reference_anchor
-            or is_reference_anchor(anchor)
-        ):
+        if packages_context.packages_is_reference_anchor:
             return
 
         try:
