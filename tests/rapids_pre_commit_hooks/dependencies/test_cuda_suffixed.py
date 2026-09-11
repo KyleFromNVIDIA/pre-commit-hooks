@@ -242,8 +242,8 @@ class TestCUDASuffixedHandler:
                 [("package", None)],
                 [
                     {
-                        "warning": 'package "package" in common '
-                        "dependency set",
+                        "warning": 'package "package" in specific '
+                        "dependency set with no cuda_suffixed field",
                         "notes": [
                             "place in a specific dependency set with "
                             'cuda_suffixed: "false" instead',
@@ -352,7 +352,12 @@ class TestCUDASuffixedHandler:
                 True,
                 12,
                 [],
-                [("package", "package_anchor")],
+                [
+                    (
+                        "package",
+                        Anchor(AnchorType.DEFINITION, "package_anchor"),
+                    )
+                ],
                 [
                     {
                         "warning": 'package "package" in specific dependency '
@@ -463,7 +468,13 @@ class TestCUDASuffixedHandler:
                 True,
                 True,
                 13,
-                [("package", "-cu12", "package_anchor")],
+                [
+                    (
+                        "package",
+                        "-cu12",
+                        Anchor(AnchorType.DEFINITION, "package_anchor"),
+                    )
+                ],
                 [],
                 [
                     {
@@ -543,7 +554,13 @@ class TestCUDASuffixedHandler:
                 True,
                 False,
                 None,
-                [("package", "-cu12", "package_anchor")],
+                [
+                    (
+                        "package",
+                        "-cu12",
+                        Anchor(AnchorType.DEFINITION, "package_anchor"),
+                    )
+                ],
                 [],
                 [
                     {
@@ -845,7 +862,7 @@ class TestCUDASuffixedHandler:
                 Anchor(AnchorType.REFERENCE, "package"),
                 False,
                 [],
-                [],
+                ["package"],
                 id="unsuffixed-anchor-reference",
             ),
             pytest.param(
@@ -868,7 +885,7 @@ class TestCUDASuffixedHandler:
                 "package-cu12",
                 Anchor(AnchorType.REFERENCE, "package"),
                 False,
-                [],
+                [("package", "-cu12")],
                 [],
                 id="suffixed-anchor-reference",
             ),
@@ -909,14 +926,13 @@ class TestCUDASuffixedHandler:
             (
                 name,
                 suffix,
-                anchor.anchor_name if anchor else None,
+                anchor,
                 package_node,
             )
             for (name, suffix) in suffixed_names
         ]
         assert context.parent_context.suspicious_unsuffixed_packages == [
-            (name, anchor.anchor_name if anchor else None, package_node)
-            for name in unsuffixed_names
+            (name, anchor, package_node) for name in unsuffixed_names
         ]
 
 
@@ -1084,6 +1100,92 @@ class TestCUDASuffixedHandler:
             [],
             id="non-rapids-packages",
         ),
+        pytest.param(
+            """\
+            + dependencies:
+            +   file_set:
+            +     common:
+            :     ~~~~~~warnings.0.notes.0
+            :     ~~~~~~warnings.1.notes.0
+            :     ~~~~~~warnings.2.notes.0
+            :     ~~~~~~warnings.3.notes.0
+            +       - output_types: pyproject
+            +         packages:
+            +           - &package package
+            :             ~~~~~~~~~~~~~~~~warnings.1.warning
+            :             ~~~~~~~~~~~~~~~~warnings.3.warning
+            :             ~~~~~~~~~~~~~~~~warnings.4.warning
+            +           - &package_cu12 package-cu12
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.0.warning
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.2.warning
+            :             ~~~~~~~~~~~~~~~~~~~~~~~~~~warnings.5.warning
+            +       - output_types: pyproject
+            +         packages:
+            +           - *package
+            +           - *package_cu12
+            +     specific:
+            +       - output_types: pyproject
+            +         matrices:
+            +           - matrix:
+            :             ~~~~~~warnings.4.notes.0
+            +               cuda_suffixed: "true"
+            +               cuda: "12.*"
+            +             packages:
+            +               - *package
+            +           - matrix:
+            :             ~~~~~~warnings.5.notes.0
+            +               cuda_suffixed: "false"
+            +             packages:
+            +               - *package_cu12
+            """,
+            [
+                {
+                    "warning": 'package "package" in common dependency set',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'cuda_suffixed: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "package" in common dependency set',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'cuda_suffixed: "false" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "package" in common dependency set',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'cuda_suffixed: "true" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "package" in common dependency set',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'cuda_suffixed: "false" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "package" in specific dependency set '
+                    'with cuda_suffixed: "true"',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'cuda_suffixed: "false" instead',
+                    ],
+                },
+                {
+                    "warning": 'package "package" in specific dependency set '
+                    'with cuda_suffixed: "false"',
+                    "notes": [
+                        "place in a specific dependency set with "
+                        'cuda_suffixed: "true" instead',
+                    ],
+                },
+            ],
+            id="anchors",
+        ),
     ],
 )
 def test_check_cuda_suffixed_integration(content, warnings):
@@ -1106,7 +1208,9 @@ def test_check_cuda_suffixed_integration(content, warnings):
         "get_rapids_version",
         return_value=rapids_version,
     ):
-        dependencies_yaml.traverse_root(handler, {}, set(), composed)
+        dependencies_yaml.traverse_root(
+            handler, loader.document_anchors[0], set(), composed
+        )
 
     assert linter.warnings == zip_expected_warnings(
         spans.get("warnings", []), warnings
