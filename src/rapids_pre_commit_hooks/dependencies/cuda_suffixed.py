@@ -55,10 +55,10 @@ class CUDASuffixedHandler(Handler):
     @dataclass
     class CommonItemContext:
         has_python_output_type: bool = False
-        suspicious_suffixed_packages: "list[tuple[str, str, Optional[str], yaml.Node]]" = field(  # noqa: E501
+        suspicious_suffixed_packages: "list[tuple[str, str, Optional[Anchor], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
-        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
+        suspicious_unsuffixed_packages: "list[tuple[str, Optional[Anchor], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
 
@@ -76,10 +76,10 @@ class CUDASuffixedHandler(Handler):
         cuda_suffixed: "Optional[bool]" = None
         cuda_node: "Optional[yaml.Node]" = None
         cuda_major: "Optional[int]" = None
-        suspicious_suffixed_packages: "list[tuple[str, str, Optional[str], yaml.Node]]" = field(  # noqa: E501
+        suspicious_suffixed_packages: "list[tuple[str, str, Optional[Anchor], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
-        suspicious_unsuffixed_packages: "list[tuple[str, Optional[str], yaml.Node]]" = field(  # noqa: E501
+        suspicious_unsuffixed_packages: "list[tuple[str, Optional[Anchor], yaml.Node]]" = field(  # noqa: E501
             default_factory=list
         )
 
@@ -197,7 +197,8 @@ class CUDASuffixedHandler(Handler):
                     ) in matrices_item_context.suspicious_unsuffixed_packages:
                         w = self.linter.add_warning(
                             (node.start_mark.index, node.end_mark.index),
-                            f'package "{name}" in common dependency set',
+                            f'package "{name}" in specific dependency set '
+                            "with no cuda_suffixed field",
                         )
                         if matrices_item_context.matrix_node:
                             w.add_note(
@@ -229,7 +230,9 @@ class CUDASuffixedHandler(Handler):
                                     ),
                                     f'package "{name}" has wrong -cu* suffix',
                                 )
-                                anchor_text = f"&{anchor} " if anchor else ""
+                                anchor_text = (
+                                    f"&{anchor.anchor_name} " if anchor else ""
+                                )
                                 req = Requirement(node.value)
                                 req.name = (
                                     f"{name}"
@@ -252,8 +255,20 @@ class CUDASuffixedHandler(Handler):
                             f'package "{name}" in specific dependency set '
                             'with cuda_suffixed: "true"',
                         )
-                        if matrices_item_context.cuda_major:
-                            anchor_text = f"&{anchor} " if anchor else ""
+                        if is_reference_anchor(anchor):
+                            if matrices_item_context.matrix_node:
+                                w.add_note(
+                                    (
+                                        matrices_item_context.matrix_node.start_mark.index,
+                                        matrices_item_context.matrix_node.end_mark.index,
+                                    ),
+                                    "place in a specific dependency set with "
+                                    'cuda_suffixed: "false" instead',
+                                )
+                        elif matrices_item_context.cuda_major:
+                            anchor_text = (
+                                f"&{anchor.anchor_name} " if anchor else ""
+                            )
                             req = Requirement(node.value)
                             req.name = (
                                 f"{name}-cu{matrices_item_context.cuda_major}"
@@ -283,13 +298,26 @@ class CUDASuffixedHandler(Handler):
                             f'package "{name}" in specific dependency set '
                             'with cuda_suffixed: "false"',
                         )
-                        anchor_text = f"&{anchor} " if anchor else ""
-                        req = Requirement(node.value)
-                        req.name = name
-                        w.add_replacement(
-                            (node.start_mark.index, node.end_mark.index),
-                            f"{anchor_text}{req}",
-                        )
+                        if is_reference_anchor(anchor):
+                            if matrices_item_context.matrix_node:
+                                w.add_note(
+                                    (
+                                        matrices_item_context.matrix_node.start_mark.index,
+                                        matrices_item_context.matrix_node.end_mark.index,
+                                    ),
+                                    "place in a specific dependency set with "
+                                    'cuda_suffixed: "true" instead',
+                                )
+                        else:
+                            anchor_text = (
+                                f"&{anchor.anchor_name} " if anchor else ""
+                            )
+                            req = Requirement(node.value)
+                            req.name = name
+                            w.add_replacement(
+                                (node.start_mark.index, node.end_mark.index),
+                                f"{anchor_text}{req}",
+                            )
 
     @contextlib.contextmanager
     def handle_matrices_item(
@@ -352,10 +380,7 @@ class CUDASuffixedHandler(Handler):
         anchor: "Optional[Anchor]",
         item: "yaml.Node",
     ) -> None:
-        if (
-            packages_context.packages_is_reference_anchor
-            or is_reference_anchor(anchor)
-        ):
+        if packages_context.packages_is_reference_anchor:
             return
 
         try:
@@ -370,7 +395,7 @@ class CUDASuffixedHandler(Handler):
 
         if req.name in cuda_suffixed_packages:
             packages_context.parent_context.suspicious_unsuffixed_packages.append(
-                (req.name, anchor.anchor_name if anchor else None, item)
+                (req.name, anchor, item)
             )
         elif (
             match := re.search(
@@ -381,7 +406,7 @@ class CUDASuffixedHandler(Handler):
                 (
                     match.group("package"),
                     match.group("suffix"),
-                    anchor.anchor_name if anchor else None,
+                    anchor,
                     item,
                 )
             )
